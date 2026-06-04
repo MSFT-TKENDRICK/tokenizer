@@ -31,13 +31,15 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Text, tokens, and token IDs" })).toHaveCount(0);
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
-  await expect(page.getByLabel("Prompt metrics")).toContainText(/\d+tokens/);
+  await expect(inlineMetric(page, "tokens")).toHaveText(/\d+/);
   await expect(page.getByLabel("Prompt metrics")).toContainText("AI credits");
   await expect(page.getByLabel("Chat message input")).toHaveValue(
     "Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.",
   );
   await expect(page.getByLabel("Chat message input")).toBeFocused();
   await expect(page.getByRole("button", { name: "Submit user message" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit user message" }).locator("svg")).toBeVisible();
+  await expect(page.getByText("Submit", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("Chat message token and credit impact")).toContainText("tokens");
   await expect(page.getByLabel("Chat message token and credit impact")).toContainText("AI credits");
   await expect(page.getByLabel("GitHub Copilot model selector")).toBeVisible();
@@ -47,9 +49,14 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByLabel("Model pricing metadata")).not.toContainText("legacy");
   await expect(page.getByLabel("Prompt context controls")).toBeVisible();
   await expect(page.locator(".plaintext-highlight .xml-tag").first()).toBeVisible();
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/  <coding_agent_instructions>/);
   await expect(page.locator(".plaintext-highlight")).toContainText("</coding_agent_instructions>");
   await expect(page.locator(".plaintext-highlight")).toContainText("</system>");
   expect(await page.locator(".plaintext-highlight").textContent()).toBe(basePrompt);
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("System prompt");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Custom instructions");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Tools");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Total");
   await expect(page.getByLabel("Selected context preview")).toContainText("No context added.");
   await expect(page.getByText("Diffs")).toHaveCount(0);
   await expect(page.getByText("Patch", { exact: true })).toHaveCount(0);
@@ -173,6 +180,7 @@ test("context layer buttons apply and remove prompt diffs", async ({ page }) => 
   await expect(editor).toHaveValue(composePrompt(["workspace", "tools"]));
   await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace", "tools"]));
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<skills>" })).toBeInViewport();
+  await expect(editor).toHaveValue(/  <skill>/);
   await expect(page.getByLabel("Selected context preview")).toContainText("+<name>web-design-reviewer</name>");
   await expect(page.getByLabel("Selected context preview")).toContainText("+<instruction forToolsWithPrefix=\"mcp_github\">");
 
@@ -225,6 +233,26 @@ test("model selector changes context copy and meter width", async ({ page }) => 
   await expect(page.getByLabel("Model pricing metadata")).toContainText("100/1M");
 });
 
+test("itemized invoice totals match prompt metrics", async ({ page }) => {
+  const invoice = page.getByLabel("Prompt cost invoice");
+  const totalTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
+
+  expect(await invoiceTokenValue(page, "System prompt")).toBeGreaterThan(0);
+  expect(await invoiceTokenValue(page, "Custom instructions")).toBe(0);
+  expect(await invoiceTokenValue(page, "Tools")).toBe(0);
+  expect(await invoiceTokenValue(page, "Total")).toBe(totalTokens);
+
+  await page.getByRole("button", { name: /Instructions context/ }).click();
+  await page.getByRole("button", { name: /Tools context/ }).click();
+  await expect(invoice).toContainText("Custom instructions");
+  await expect(invoice).toContainText("Tools");
+  expect(await invoiceTokenValue(page, "Custom instructions")).toBeGreaterThan(0);
+  expect(await invoiceTokenValue(page, "Tools")).toBeGreaterThan(0);
+  expect(await invoiceTokenValue(page, "Total")).toBe(
+    Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, "")),
+  );
+});
+
 test("mobile viewport keeps visible features usable", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
@@ -253,6 +281,11 @@ function inlineMetric(page: Page, label: string) {
 
 function chatImpactMetric(page: Page, label: string) {
   return page.getByLabel("Chat message token and credit impact").locator("div", { hasText: label }).locator("dd");
+}
+
+async function invoiceTokenValue(page: Page, label: string) {
+  const text = await page.getByLabel("Prompt cost invoice").locator("tr", { hasText: label }).locator("td").first().textContent();
+  return Number(text?.replace(/,/g, "") ?? 0);
 }
 
 function formatMetric(value: number) {

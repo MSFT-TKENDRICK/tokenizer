@@ -6,7 +6,13 @@ export interface PromptPatchLayer {
   content: string;
 }
 
-const baseSystem = `<system>
+export interface PromptSection {
+  id: string;
+  label: string;
+  content: string;
+}
+
+export const baseSystem = `<system>
 You are an expert AI programming assistant, working with a user in the VS Code editor.
 Your name is GitHub Copilot.
 Follow Microsoft content policies.
@@ -127,19 +133,31 @@ Choose the most appropriate agent when asked to run a subagent.
   },
 ];
 
-export function composePrompt(selectedLayerIds: readonly string[], userRequest = defaultUserRequest) {
+export function getPromptSections(selectedLayerIds: readonly string[], userRequest = defaultUserRequest): PromptSection[] {
   const selected = new Set(selectedLayerIds);
-  const sections = [
-    baseSystem,
+  return [
+    { id: "system", label: "System prompt", content: formatPromptXml(baseSystem) },
     ...promptPatchLayers
       .filter((layer) => selected.has(layer.id))
-      .map((layer) => layer.content),
-    `<userRequest>
+      .map((layer) => ({
+        id: layer.id,
+        label: layer.id === "instructions" ? "Custom instructions" : layer.name,
+        content: formatPromptXml(layer.content),
+      })),
+    {
+      id: "user",
+      label: "User message",
+      content: formatPromptXml(`<userRequest>
 ${userRequest}
-</userRequest>`,
+</userRequest>`),
+    },
   ];
+}
 
-  return sections.join("\n\n");
+export function composePrompt(selectedLayerIds: readonly string[], userRequest = defaultUserRequest) {
+  return getPromptSections(selectedLayerIds, userRequest)
+    .map((section) => section.content)
+    .join("\n\n");
 }
 
 export function createPatchDiff(layer: PromptPatchLayer) {
@@ -151,4 +169,38 @@ export function createPatchDiff(layer: PromptPatchLayer) {
     `@@ insert ${layer.id} before <userRequest> @@`,
     ...additions,
   ].join("\n");
+}
+
+function formatPromptXml(value: string) {
+  const lines = value.replace(/\r\n?/g, "\n").split("\n");
+  let depth = 0;
+
+  return lines
+    .map((line) => {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) {
+        return "";
+      }
+
+      if (isClosingTag(trimmed)) {
+        depth = Math.max(depth - 1, 0);
+      }
+
+      const formatted = `${"  ".repeat(depth)}${trimmed}`;
+
+      if (isOpeningTag(trimmed)) {
+        depth += 1;
+      }
+
+      return formatted;
+    })
+    .join("\n");
+}
+
+function isClosingTag(value: string) {
+  return /^<\/[\w:-]+>$/.test(value);
+}
+
+function isOpeningTag(value: string) {
+  return /^<[\w:-]+(?:\s+[^>]*)?>$/.test(value) && !value.endsWith("/>") && !value.includes("</");
 }

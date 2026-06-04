@@ -13,7 +13,7 @@ import {
   modelById,
   type CopilotModelFamilyId,
 } from "./lib/copilotModels";
-import { composePrompt, createPatchDiff, defaultUserRequest, promptPatchLayers } from "./lib/examples";
+import { composePrompt, createPatchDiff, defaultUserRequest, getPromptSections, promptPatchLayers } from "./lib/examples";
 import "./App.css";
 
 type ViewMode = "plain" | "tokens" | "ids";
@@ -155,6 +155,14 @@ function PatchLayerIcon({ icon }: { icon: string }) {
   }
 }
 
+function SubmitIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path d="M1.5 13.5 14.5 8 1.5 2.5v4.3L8.8 8l-7.3 1.2v4.3Zm1-1.5V10l6.4-1.1V7.1L2.5 6V4l9.4 4-9.4 4Z" />
+    </svg>
+  );
+}
+
 export default function App() {
   const plainEditorRef = useRef<HTMLTextAreaElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
@@ -166,7 +174,8 @@ export default function App() {
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
   const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
-  const text = useMemo(() => composePrompt(selectedLayerIds, userMessage), [selectedLayerIds, userMessage]);
+  const promptSections = useMemo(() => getPromptSections(selectedLayerIds, userMessage), [selectedLayerIds, userMessage]);
+  const text = useMemo(() => promptSections.map((section) => section.content).join("\n\n"), [promptSections]);
   const tokens = useMemo(() => tokenize(text), [text]);
   const userMessageTokens = useMemo(() => tokenize(userMessage), [userMessage]);
   const summary = useMemo(() => summarizeTokens(text, tokens, selectedModel), [text, tokens, selectedModel]);
@@ -178,6 +187,46 @@ export default function App() {
   const estimatedUserMessageCost = estimateInputUsd(userMessageTokens.length, selectedModel);
   const estimatedUserMessageAiCredits = estimateInputAiCredits(userMessageTokens.length, selectedModel);
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
+  const invoiceRows = useMemo(() => {
+    const activeRows = new Map(
+      promptSections.map((section, index) => {
+        const billedContent = index === 0 ? section.content : `\n\n${section.content}`;
+        const tokenCount = tokenize(billedContent).length;
+        return [
+          section.id,
+          {
+            id: section.id,
+            label: section.label,
+            tokens: tokenCount,
+            aiCredits: estimateInputAiCredits(tokenCount, selectedModel),
+            active: true,
+          },
+        ];
+      }),
+    );
+
+    const optionalRows = promptPatchLayers.map((layer) => ({
+      id: layer.id,
+      label: layer.id === "instructions" ? "Custom instructions" : layer.name,
+    }));
+
+    return [
+      activeRows.get("system"),
+      ...optionalRows.map((row) => activeRows.get(row.id) ?? {
+        ...row,
+        tokens: 0,
+        aiCredits: 0,
+        active: false,
+      }),
+      activeRows.get("user"),
+    ].filter((row): row is {
+      id: string;
+      label: string;
+      tokens: number;
+      aiCredits: number;
+      active: boolean;
+    } => row !== undefined);
+  }, [promptSections, selectedModel]);
 
   useEffect(() => {
     chatInputRef.current?.focus({ preventScroll: true });
@@ -296,28 +345,6 @@ export default function App() {
                 Token IDs
               </button>
             </div>
-            <dl className="inline-metrics" aria-label="Prompt metrics">
-              <div data-metric="tokens">
-                <dd aria-label="Current token count">{formatNumber(summary.tokens)}</dd>
-                <dt>tokens</dt>
-              </div>
-              <div data-metric="characters">
-                <dd>{formatNumber(summary.characters)}</dd>
-                <dt>characters</dt>
-              </div>
-              <div data-metric="words">
-                <dd>{formatNumber(summary.words)}</dd>
-                <dt>words</dt>
-              </div>
-              <div data-metric="bytes">
-                <dd>{formatNumber(summary.bytes)}</dd>
-                <dt>bytes</dt>
-              </div>
-              <div data-metric="ai-credits">
-                <dd>{formatAiCredits(estimatedInputAiCredits)}</dd>
-                <dt>AI credits</dt>
-              </div>
-            </dl>
           </div>
 
           <div className="text-surface">
@@ -464,8 +491,8 @@ export default function App() {
                 rows={2}
                 spellCheck="true"
               />
-              <button className="chat-submit" type="submit" aria-label="Submit user message">
-                Submit
+              <button className="chat-submit" type="submit" aria-label="Submit user message" title="Submit user message">
+                <SubmitIcon />
               </button>
               <dl className="chat-impact" aria-label="Chat message token and credit impact">
                 <div>
@@ -512,6 +539,55 @@ export default function App() {
               {`${formatNumber(remainingContext)} tokens remaining in a ${formatNumber(selectedModel.contextWindow)} token window.`}
             </p>
           </div>
+
+          <dl className="context-metrics" aria-label="Prompt metrics">
+            <div data-metric="tokens">
+              <dt>tokens</dt>
+              <dd aria-label="Current token count">{formatNumber(summary.tokens)}</dd>
+            </div>
+            <div data-metric="characters">
+              <dt>characters</dt>
+              <dd>{formatNumber(summary.characters)}</dd>
+            </div>
+            <div data-metric="words">
+              <dt>words</dt>
+              <dd>{formatNumber(summary.words)}</dd>
+            </div>
+            <div data-metric="bytes">
+              <dt>bytes</dt>
+              <dd>{formatNumber(summary.bytes)}</dd>
+            </div>
+            <div data-metric="ai-credits">
+              <dt>AI credits</dt>
+              <dd>{formatAiCredits(estimatedInputAiCredits)}</dd>
+            </div>
+          </dl>
+
+          <table className="invoice-table" aria-label="Prompt cost invoice">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col">Tokens</th>
+                <th scope="col">Credits</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoiceRows.map((row) => (
+                <tr className={row.active ? "" : "inactive"} key={row.id}>
+                  <th scope="row">{row.label}</th>
+                  <td>{formatNumber(row.tokens)}</td>
+                  <td>{formatAiCredits(row.aiCredits)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">Total</th>
+                <td>{formatNumber(summary.tokens)}</td>
+                <td>{formatAiCredits(estimatedInputAiCredits)}</td>
+              </tr>
+            </tfoot>
+          </table>
 
           <p className="help-text">
             Counts and input AI credits are deterministic in this app and intended for planning. Production tokenizers, output tokens, and cached-token billing may differ by provider, model version, and interaction.
