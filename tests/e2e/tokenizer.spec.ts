@@ -102,6 +102,7 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   const baseTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
 
   expect(await textarea.evaluate((element) => element.readOnly)).toBe(true);
+  await expect(chatInput).toHaveCSS("resize", "none");
   await textarea.focus();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
   await textarea.pressSequentially("Hello, ");
