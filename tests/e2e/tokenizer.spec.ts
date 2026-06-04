@@ -81,50 +81,38 @@ test("toggles one shared viewport between plaintext, tokens, and token IDs", asy
   await expect(page.getByLabel("Plaintext editor")).toBeVisible();
 });
 
-test("typing and pasting input updates counts and token visualization", async ({ page }) => {
+test("plaintext prompt is read-only and context controls update counts", async ({ page }) => {
   const textarea = page.getByLabel("Plaintext editor");
+  const initialPrompt = await textarea.inputValue();
+  const baseTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
 
-  await textarea.fill("");
+  expect(await textarea.evaluate((element) => element.readOnly)).toBe(true);
+  await textarea.focus();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
   await textarea.pressSequentially("Hello, ");
   await page.keyboard.insertText("world! 🚀");
 
-  await expect(textarea).toHaveValue("Hello, world! 🚀");
-  await expect(inlineMetric(page, "tokens")).toHaveText("7");
-  await expect(inlineMetric(page, "characters")).toHaveText("15");
-  await expect(inlineMetric(page, "words")).toHaveText("2");
-  await expect(inlineMetric(page, "bytes")).toHaveText("18");
-  await expect(inlineMetric(page, "ai-credits")).toHaveText("0.0032");
+  await expect(textarea).toHaveValue(initialPrompt);
+  await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
 
+  await page.getByRole("button", { name: /Workspace context/ }).click();
+  await expect(textarea).toHaveValue(composePrompt(["workspace"]));
+  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(baseTokens);
   await page.getByRole("tab", { name: "Tokens" }).click();
-  await expect(page.locator(".token-segment", { hasText: "Hello" })).toHaveAttribute(
-    "title",
-    /Token 1 · word · 5 bytes · ID \d+/,
-  );
-  await expect(page.locator(".token-segment", { hasText: "🚀" })).toHaveAttribute(
-    "title",
-    /Token 7 · emoji · 4 bytes · ID \d+/,
-  );
+  await expect(page.getByLabel("Token text view")).toContainText("workspace_info");
 });
 
-test("XML syntax highlighting preserves closing tags while editing and scrolling", async ({ page }) => {
+test("XML syntax highlighting preserves readonly closing tags while scrolling", async ({ page }) => {
   const editor = page.getByLabel("Plaintext editor");
-  const xml = [
-    "<root>",
-    "  <child attr=\"one\">Alpha</child>",
-    "  <child attr=\"two\">Beta</child>",
-    "</root>",
-  ].join("\n");
-
-  await editor.fill(xml);
-  await expect(page.locator(".plaintext-highlight")).toHaveText(xml);
-  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</child>" })).toHaveCount(2);
-  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</root>" })).toBeVisible();
+  await expect(page.locator(".plaintext-highlight")).toHaveText(basePrompt);
+  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</coding_agent_instructions>" })).toBeVisible();
+  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</system>" })).toHaveCount(1);
 
   await editor.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
   });
-  await expect(page.locator(".plaintext-highlight")).toContainText("</root>");
+  await expect(page.locator(".plaintext-highlight")).toContainText("</userRequest>");
 });
 
 test("Clear empties state and Restore sample restores the base prompt", async ({ page }) => {
@@ -193,27 +181,21 @@ test("context layers isolate canonical Copilot context sources", async ({ page }
 });
 
 test("model selector changes context copy and meter width", async ({ page }) => {
-  const longPrompt = `${"token ".repeat(1_000)}done`;
-  await page.getByLabel("Plaintext editor").fill(longPrompt);
-  await expect(inlineMetric(page, "tokens")).toHaveText("2,001");
-
   const meter = page.locator(".meter span");
   const initialWidth = await meter.evaluate((element) => getComputedStyle(element).width);
+  const initialCredits = Number((await inlineMetric(page, "ai-credits").textContent())?.replace(/,/g, ""));
 
   await expect(page.locator(".context-label")).toContainText("Auto");
-  await expect(page.locator(".context-label strong")).toHaveText("1.6%");
-  await expect(page.getByText("125,999 tokens remaining in a 128,000 token window.")).toBeVisible();
-  await expect(inlineMetric(page, "ai-credits")).toHaveText("0.9005");
-  await expect(page.getByText("Estimated prompt input: 0.9005 AI credits ($0.0090) at current Copilot usage-based pricing.")).toBeVisible();
+  await expect(page.getByText(/tokens remaining in a 128,000 token window\./)).toBeVisible();
+  await expect(page.getByText(/Estimated prompt input: .* AI credits .* at current Copilot usage-based pricing\./)).toBeVisible();
 
   await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4");
   await expect(page.locator(".context-label")).toContainText("GPT-5.4");
-  await expect(page.locator(".context-label strong")).toHaveText("0.7%");
-  await expect(page.getByText("269,999 tokens remaining in a 272,000 token window.")).toBeVisible();
+  await expect(page.getByText(/tokens remaining in a 272,000 token window\./)).toBeVisible();
   await expect(page.getByLabel("Model pricing metadata")).toContainText("$2.5/1M");
   await expect(page.getByLabel("Model pricing metadata")).toContainText("$0.3/1M");
   await expect(page.getByLabel("Model pricing metadata")).toContainText("250/1M");
-  await expect(inlineMetric(page, "ai-credits")).toHaveText("0.5003");
+  expect(Number((await inlineMetric(page, "ai-credits").textContent())?.replace(/,/g, ""))).toBeLessThan(initialCredits);
 
   const largerContextWidth = await meter.evaluate((element) => getComputedStyle(element).width);
   expect(parseFloat(largerContextWidth)).toBeLessThan(parseFloat(initialWidth));
@@ -247,4 +229,8 @@ test("mobile viewport keeps visible features usable", async ({ page }) => {
 
 function inlineMetric(page: Page, label: string) {
   return page.locator(`[data-metric="${label}"] dd`);
+}
+
+function formatMetric(value: number) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
 }

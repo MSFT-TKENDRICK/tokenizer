@@ -386,10 +386,11 @@ export default function App() {
                   ref={plainEditorRef}
                   className="text-viewport text-input"
                   value={text}
-                  onChange={(event) => setText(event.target.value)}
                   onScroll={(event) => setPlainScrollTop(event.currentTarget.scrollTop)}
                   placeholder="Paste or type text here..."
                   aria-label="Plaintext editor"
+                  aria-readonly="true"
+                  readOnly
                   spellCheck="true"
                 />
               </div>

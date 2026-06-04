@@ -425,8 +425,9 @@ h3 {
   height: 100%;
   color: transparent;
   background: transparent;
-  caret-color: var(--color-primary);
-  resize: vertical;
+  caret-color: transparent;
+  cursor: default;
+  resize: none;
 }
 
 .text-input::placeholder {

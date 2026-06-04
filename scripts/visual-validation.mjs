@@ -33,7 +33,7 @@ const scenarios = [
     viewLabel: "Token ID view",
     run: async (page) => {
       await page.goto(baseURL);
-      await page.getByLabel("Plaintext editor").fill("Hello, world! 🚀\nA second line with 42 tokens?");
+      await page.getByRole("button", { name: /Workspace/ }).click();
       await page.getByRole("tab", { name: "Token IDs" }).click();
     },
   },
