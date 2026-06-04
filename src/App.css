@@ -161,7 +161,6 @@ h3 {
 .help-text,
 .empty-view,
 .context-box p,
-.patch-board p,
 .patch-layer-description,
 .patch-layer-delta,
 .patch-empty {
@@ -275,68 +274,43 @@ h3 {
   content: "";
 }
 
-.patch-board {
-  display: grid;
-  gap: 18px;
-  padding: 24px;
-  margin-bottom: 24px;
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius-block);
+.input-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-primary);
   background: var(--color-background);
 }
 
-.patch-board-copy p {
-  max-width: 620px;
-  margin-bottom: 0;
+.patch-layer-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.patch-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.72fr);
-  gap: 18px;
-  align-items: stretch;
-}
-
-.composition-rule {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  border: 1px solid var(--color-primary);
+.patch-label {
+  padding: 0 6px;
+  color: var(--color-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  text-align: center;
+  line-height: 1;
   text-transform: uppercase;
 }
 
-.composition-rule span {
-  padding: 9px 8px;
-}
-
-.composition-rule span:not(:last-child) {
-  border-right: 1px solid var(--color-primary);
-}
-
-.composition-rule span:nth-child(2) {
-  background: var(--color-primary);
-  color: var(--color-background);
-}
-
-.patch-layer-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
 .patch-layer-button {
-  display: grid;
-  min-height: 0;
-  padding: 14px;
+  display: inline-grid;
+  min-width: 40px;
+  min-height: 34px;
+  padding: 4px 7px;
   border: 1px solid var(--color-border);
   border-radius: 0;
   background: var(--color-background);
   color: var(--color-primary);
   font-family: var(--font-mono);
-  text-align: left;
+  text-align: center;
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
@@ -351,68 +325,54 @@ h3 {
   color: var(--color-background);
 }
 
-.patch-layer-button[aria-pressed="true"] .patch-layer-description,
-.patch-layer-button[aria-pressed="true"] .patch-layer-delta,
-.patch-layer-button[aria-pressed="true"] .patch-layer-state {
+.patch-layer-button[aria-pressed="true"] .patch-layer-delta {
   color: var(--color-background);
 }
 
-.patch-layer-state {
-  margin-bottom: 10px;
-  color: var(--color-muted);
-  font-size: 10px;
+.patch-layer-icon {
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.patch-layer-name {
-  margin-bottom: 6px;
-  font-size: 14px;
-  line-height: 1.3;
-}
-
-.patch-layer-description {
-  min-height: 48px;
-  margin-bottom: 12px;
+  line-height: 1.1;
 }
 
 .patch-layer-delta {
-  align-self: end;
-  font-weight: 700;
+  color: var(--color-muted);
+  font-size: 9px;
+  line-height: 1.1;
 }
 
-.patch-preview {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 100%;
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius-block);
-  background: var(--color-code-block);
-  color: var(--color-dark-primary);
-  overflow: hidden;
-}
-
-.patch-preview-header {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--color-dark-muted);
+.patch-details {
+  margin-left: auto;
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: 11px;
   text-transform: uppercase;
 }
 
-.patch-preview pre,
-.patch-empty {
-  margin: 0;
-  padding: 14px;
+.patch-details summary {
+  min-height: 34px;
+  padding: 8px 8px 0;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.patch-preview {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  width: min(560px, 100%);
+  margin-top: 8px;
+  border: 1px solid var(--color-primary);
+  border-radius: 0;
+  background: var(--color-code-block);
+  color: var(--color-dark-primary);
+  overflow: hidden;
 }
 
 .patch-preview pre {
-  max-height: 360px;
+  max-height: 180px;
+  margin: 0;
+  padding: 12px;
   overflow: auto;
   color: var(--color-hover-highlight);
   font-family: var(--font-mono);
@@ -422,15 +382,17 @@ h3 {
 }
 
 .patch-empty {
+  margin: 0;
+  padding: 12px;
   color: var(--color-dark-muted);
 }
 
 .text-button {
   min-height: 0;
-  padding: 0;
+  padding: 0 6px;
   border: 0;
   background: transparent;
-  color: var(--color-dark-primary);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: 11px;
   text-decoration: underline;
@@ -438,6 +400,7 @@ h3 {
 }
 
 .text-surface {
+  position: relative;
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-block);
   background: var(--color-background);
@@ -676,11 +639,6 @@ select {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .patch-layout {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 620px) {
   .app-shell {
     padding-right: var(--space-mobile);
@@ -729,21 +687,21 @@ select {
     padding: 18px;
   }
 
-  .patch-board {
-    padding: 18px;
+  .patch-toolbar {
+    gap: 4px;
   }
 
-  .patch-layer-grid {
-    grid-template-columns: 1fr;
+  .input-toolbar {
+    gap: 4px;
   }
 
-  .composition-rule {
-    grid-template-columns: 1fr;
+  .patch-details {
+    width: 100%;
+    margin-left: 0;
   }
 
-  .composition-rule span:not(:last-child) {
-    border-right: 0;
-    border-bottom: 1px solid var(--color-primary);
+  .patch-details summary {
+    padding-left: 0;
   }
 
 }

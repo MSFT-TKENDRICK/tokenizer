@@ -1,6 +1,7 @@
 export interface PromptPatchLayer {
   id: string;
   name: string;
+  icon: string;
   description: string;
   content: string;
 }
@@ -35,6 +36,7 @@ export const promptPatchLayers: readonly PromptPatchLayer[] = [
   {
     id: "workspace",
     name: "Workspace",
+    icon: "WS",
     description: "Adds OS, repository shape, and runnable task context.",
     content: `<workspace_info>
 The user's current OS is: Windows.
@@ -56,6 +58,7 @@ Runnable tasks:
   {
     id: "agents-md",
     name: "AGENTS.md",
+    icon: "AG",
     description: "Adds one autonomous-agent instruction file.",
     content: `<instructions>
 <instruction>
@@ -75,6 +78,7 @@ Runnable tasks:
   {
     id: "repo-instructions",
     name: "Repo instructions",
+    icon: "CI",
     description: "Adds one repository-wide Copilot instruction file.",
     content: `<instructions>
 <instruction>
@@ -93,6 +97,7 @@ Run both workspace builds before finishing.
   {
     id: "one-skill",
     name: "1 skill",
+    icon: "SK",
     description: "Adds one agent skill manifest entry.",
     content: `<skills>
 Here is a list of skills that contain domain specific knowledge.
@@ -107,6 +112,7 @@ When the user's task falls within a skill domain, read the skill file before act
   {
     id: "one-mcp-tool",
     name: "1 MCP tool",
+    icon: "MCP",
     description: "Adds one GitHub MCP tool instruction block.",
     content: `<instruction forToolsWithPrefix="mcp_github">
 # GitHub MCP Server
@@ -122,6 +128,7 @@ Fetch a pull request by owner, repo, and pull request number.
   {
     id: "custom-agent",
     name: "Custom agent",
+    icon: "CA",
     description: "Adds one Copilot custom agent entry.",
     content: `<agents>
 Here is a list of agents that can be used when running a subagent.
@@ -136,6 +143,7 @@ Choose the most appropriate agent when asked to run a subagent.
   {
     id: "terminal-context",
     name: "Terminal",
+    icon: "TTY",
     description: "Adds one current terminal/session context block.",
     content: `<context>
 Current date: 2026-06-04.

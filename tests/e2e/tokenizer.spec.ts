@@ -30,8 +30,8 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByRole("tab", { name: "Plaintext" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Prompt metrics")).toContainText(/\d+tokens/);
-  await expect(page.getByRole("heading", { name: "Apply prompt context as diffs" })).toBeVisible();
-  await expect(page.getByLabel("Selected patch diff preview")).toContainText("No patch diffs applied");
+  await expect(page.getByLabel("Prompt patch diffs")).toBeVisible();
+  await expect(page.getByLabel("Selected patch diff preview")).toContainText("No diffs applied.");
   await expect(page.getByLabel("Current token summary")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Prompt metrics" })).toHaveCount(0);
 });

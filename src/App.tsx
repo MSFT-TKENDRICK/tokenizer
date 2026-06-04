@@ -143,17 +143,9 @@ export default function App() {
             </dl>
           </div>
 
-          <section className="patch-board" aria-labelledby="patch-board-title">
-            <div className="patch-board-copy">
-              <p className="eyebrow">Patch composer</p>
-              <h3 id="patch-board-title">Apply prompt context as diffs</h3>
-              <p>
-                Toggle each canonical GitHub Copilot context patch to apply it to the plaintext prompt.
-                Token metrics update from the composed result.
-              </p>
-            </div>
-
-            <div className="patch-layout">
+          <div className="text-surface">
+            <div className="input-toolbar" aria-label="Prompt patch diffs">
+              <span className="patch-label">Diffs</span>
               <div className="patch-layer-grid" aria-label="Prompt patch layers">
                 {promptPatchLayers.map((layer) => {
                   const isSelected = selectedLayerSet.has(layer.id);
@@ -164,49 +156,39 @@ export default function App() {
                       aria-pressed={isSelected}
                       className="patch-layer-button"
                       key={layer.id}
+                      title={`${layer.name}: ${layer.description}`}
+                      aria-label={`${layer.name} patch`}
                       type="button"
                       onClick={() => toggleLayer(layer.id)}
                     >
-                      <span className="patch-layer-state">{isSelected ? "Applied" : "Patch"}</span>
-                      <span className="patch-layer-name">{layer.name}</span>
-                      <span className="patch-layer-description">{layer.description}</span>
+                      <span className="patch-layer-icon">{layer.icon}</span>
                       <span className="patch-layer-delta">
                         {delta > 0 ? "+" : ""}
-                        {formatNumber(delta)} tokens {isSelected ? "if removed" : "if applied"}
+                        {formatNumber(delta)}
                       </span>
                     </button>
                   );
                 })}
               </div>
-
-              <div className="patch-preview" aria-label="Selected patch diff preview">
-                <div className="patch-preview-header">
-                  <span>{formatNumber(selectedLayerIds.length)} patches applied</span>
-                  <button className="text-button" type="button" onClick={resetPrompt}>
-                    Reset
-                  </button>
+              <button className="text-button" type="button" onClick={resetPrompt}>
+                Reset
+              </button>
+              <details className="patch-details">
+                <summary>Patch ({formatNumber(selectedLayerIds.length)})</summary>
+                <div className="patch-preview" aria-label="Selected patch diff preview">
+                  {selectedLayerIds.length === 0 ? (
+                    <p className="patch-empty">No diffs applied.</p>
+                  ) : (
+                    <pre>
+                      {promptPatchLayers
+                        .filter((layer) => selectedLayerSet.has(layer.id))
+                        .map(createPatchDiff)
+                        .join("\n\n")}
+                    </pre>
+                  )}
                 </div>
-                {selectedLayerIds.length === 0 ? (
-                  <p className="patch-empty">No patch diffs applied. The prompt contains only the base system prompt and user request.</p>
-                ) : (
-                  <pre>
-                    {promptPatchLayers
-                      .filter((layer) => selectedLayerSet.has(layer.id))
-                      .map(createPatchDiff)
-                      .join("\n\n")}
-                  </pre>
-                )}
-              </div>
+              </details>
             </div>
-
-            <div className="composition-rule" aria-label="Prompt composition order">
-              <span>Base system</span>
-              <span>Selected diffs</span>
-              <span>User request</span>
-            </div>
-          </section>
-
-          <div className="text-surface">
             {viewMode === "plain" ? (
               <textarea
                 className="text-viewport text-input"

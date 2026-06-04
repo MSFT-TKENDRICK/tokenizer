@@ -208,10 +208,10 @@ Use sharp tags and editorial labels with no rounding. Inline code can use a smal
 
 ## Components
 
-Page and article containers carry the black-on-white reading experience. Metadata rows use small monospace text and muted color. Links and focus indicators use the blue accent sparingly and visibly. Tags are uppercase monospace labels with sharp corners. Shell frames, dividers, code blocks, and media blocks provide crisp editorial structure. Patch composers use bordered editorial panels with sharp multi-select layer controls, black applied states, and dark diff previews; patch additions reuse the hover highlight token rather than introducing a second success green. Dark page, article, and metadata components define the inverted reading mode without changing the article-led hierarchy.
+Page and article containers carry the black-on-white reading experience. Metadata rows use small monospace text and muted color. Links and focus indicators use the blue accent sparingly and visibly. Tags are uppercase monospace labels with sharp corners. Shell frames, dividers, code blocks, and media blocks provide crisp editorial structure. Patch controls should live inside the relevant text surface as compact input chrome, using sharp multi-select icon controls, black applied states, and optional dark diff previews; patch additions reuse the hover highlight token rather than introducing a second success green. Dark page, article, and metadata components define the inverted reading mode without changing the article-led hierarchy.
 
 ## Do's and Don'ts
 
-Do prioritize readable long-form rhythm, clear hierarchy, crisp borders, and sparse interaction color. Do keep typography medium-weight and editorial. Do use patch composer layouts to show base content, selected diffs, and generated output in a deterministic order. Do support dark mode with true contrast rather than tinted approximations.
+Do prioritize readable long-form rhythm, clear hierarchy, crisp borders, and sparse interaction color. Do keep typography medium-weight and editorial. Do keep patch controls visually subordinate to the text input they modify. Do support dark mode with true contrast rather than tinted approximations.
 
 Don't add decorative gradients, heavy shadows, soft pill tags, crowded sidebars, or multiple competing accent colors. Don't show patch toggles as tabs; use pressed multi-select controls. Don't use monospace for body prose. Don't reduce paragraph line-height below the specified reading rhythm.
