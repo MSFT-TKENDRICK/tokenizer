@@ -6,7 +6,7 @@ import {
   type ModelLimit,
   type Token,
 } from "./lib/tokenizer";
-import { examples } from "./lib/examples";
+import { composePrompt, createPatchDiff, promptPatchLayers } from "./lib/examples";
 import "./App.css";
 
 type ViewMode = "plain" | "tokens" | "ids";
@@ -25,10 +25,12 @@ function visibleTokenText(token: Token) {
 }
 
 export default function App() {
-  const [text, setText] = useState(examples[0].text);
+  const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
+  const [text, setText] = useState(composePrompt([]));
   const [modelIndex, setModelIndex] = useState(2);
   const [viewMode, setViewMode] = useState<ViewMode>("plain");
 
+  const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
   const selectedModel = modelIndex === -1 ? undefined : DEFAULT_MODEL_LIMITS[modelIndex];
   const tokens = useMemo(() => tokenize(text), [text]);
   const summary = useMemo(() => summarizeTokens(text, tokens, selectedModel), [text, tokens, selectedModel]);
@@ -37,6 +39,38 @@ export default function App() {
   const remainingContext = selectedModel
     ? Math.max(selectedModel.contextWindow - summary.tokens, 0)
     : undefined;
+
+  function applyLayers(nextLayerIds: string[]) {
+    setSelectedLayerIds(nextLayerIds);
+    setText(composePrompt(nextLayerIds));
+    setViewMode("plain");
+  }
+
+  function toggleLayer(layerId: string) {
+    const nextLayerIds = selectedLayerSet.has(layerId)
+      ? selectedLayerIds.filter((id) => id !== layerId)
+      : [...selectedLayerIds, layerId];
+
+    applyLayers(nextLayerIds);
+  }
+
+  function resetPrompt() {
+    applyLayers([]);
+  }
+
+  function clearPrompt() {
+    setSelectedLayerIds([]);
+    setText("");
+    setViewMode("plain");
+  }
+
+  function marginalTokenDelta(layerId: string) {
+    const nextLayerIds = selectedLayerSet.has(layerId)
+      ? selectedLayerIds.filter((id) => id !== layerId)
+      : [...selectedLayerIds, layerId];
+
+    return tokenize(composePrompt(nextLayerIds)).length - tokens.length;
+  }
 
   return (
     <main className="app-shell" aria-labelledby="app-title">
@@ -109,6 +143,69 @@ export default function App() {
             </dl>
           </div>
 
+          <section className="patch-board" aria-labelledby="patch-board-title">
+            <div className="patch-board-copy">
+              <p className="eyebrow">Patch composer</p>
+              <h3 id="patch-board-title">Apply prompt context as diffs</h3>
+              <p>
+                Toggle each canonical GitHub Copilot context patch to apply it to the plaintext prompt.
+                Token metrics update from the composed result.
+              </p>
+            </div>
+
+            <div className="patch-layout">
+              <div className="patch-layer-grid" aria-label="Prompt patch layers">
+                {promptPatchLayers.map((layer) => {
+                  const isSelected = selectedLayerSet.has(layer.id);
+                  const delta = marginalTokenDelta(layer.id);
+
+                  return (
+                    <button
+                      aria-pressed={isSelected}
+                      className="patch-layer-button"
+                      key={layer.id}
+                      type="button"
+                      onClick={() => toggleLayer(layer.id)}
+                    >
+                      <span className="patch-layer-state">{isSelected ? "Applied" : "Patch"}</span>
+                      <span className="patch-layer-name">{layer.name}</span>
+                      <span className="patch-layer-description">{layer.description}</span>
+                      <span className="patch-layer-delta">
+                        {delta > 0 ? "+" : ""}
+                        {formatNumber(delta)} tokens {isSelected ? "if removed" : "if applied"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="patch-preview" aria-label="Selected patch diff preview">
+                <div className="patch-preview-header">
+                  <span>{formatNumber(selectedLayerIds.length)} patches applied</span>
+                  <button className="text-button" type="button" onClick={resetPrompt}>
+                    Reset
+                  </button>
+                </div>
+                {selectedLayerIds.length === 0 ? (
+                  <p className="patch-empty">No patch diffs applied. The prompt contains only the base system prompt and user request.</p>
+                ) : (
+                  <pre>
+                    {promptPatchLayers
+                      .filter((layer) => selectedLayerSet.has(layer.id))
+                      .map(createPatchDiff)
+                      .join("\n\n")}
+                  </pre>
+                )}
+              </div>
+            </div>
+
+            <div className="composition-rule" aria-label="Prompt composition order">
+              <span>Base system</span>
+              <span>Selected diffs</span>
+              <span>User request</span>
+            </div>
+          </section>
+
           <div className="text-surface">
             {viewMode === "plain" ? (
               <textarea
@@ -151,9 +248,9 @@ export default function App() {
           </div>
 
           <div className="editor-actions">
-            <button className="ghost-button" type="button" onClick={() => setText("")}>Clear</button>
-            <button className="primary-button" type="button" onClick={() => setText(examples[0].text)}>
-              Reset example
+            <button className="ghost-button" type="button" onClick={clearPrompt}>Clear</button>
+            <button className="primary-button" type="button" onClick={resetPrompt}>
+              Reset patches
             </button>
           </div>
 
@@ -174,13 +271,6 @@ export default function App() {
             </label>
           </div>
 
-          <div className="example-grid" aria-label="Load example text">
-            {examples.map((example) => (
-              <button key={example.name} type="button" onClick={() => setText(example.text)}>
-                {example.name}
-              </button>
-            ))}
-          </div>
         </div>
 
         <aside className="stats-card panel" aria-label="Tokenizer statistics">

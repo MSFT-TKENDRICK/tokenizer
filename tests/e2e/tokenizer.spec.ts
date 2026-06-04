@@ -1,7 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
-import { examples } from "../../src/lib/examples";
+import { composePrompt, promptPatchLayers } from "../../src/lib/examples";
 
-const baseExample = examples[0];
+const basePrompt = composePrompt([]);
+const allLayerIds = promptPatchLayers.map((layer) => layer.id);
+const fullPrompt = composePrompt(allLayerIds);
 
 test.beforeEach(async ({ page }, testInfo) => {
   const browserErrors: string[] = [];
@@ -26,8 +28,10 @@ test.afterEach(async ({ page }, testInfo) => {
 
 test("renders the tokenizer workspace with the default plaintext view", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Plaintext" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(baseExample.text);
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Prompt metrics")).toContainText(/\d+tokens/);
+  await expect(page.getByRole("heading", { name: "Apply prompt context as diffs" })).toBeVisible();
+  await expect(page.getByLabel("Selected patch diff preview")).toContainText("No patch diffs applied");
   await expect(page.getByLabel("Current token summary")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Prompt metrics" })).toHaveCount(0);
 });
@@ -82,7 +86,7 @@ test("typing and pasting input updates counts and token visualization", async ({
   );
 });
 
-test("Clear empties state and Reset example restores the default text", async ({ page }) => {
+test("Clear empties state and Reset patches restores the base prompt", async ({ page }) => {
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue("");
   await expect(page.getByLabel("Plaintext editor")).toHaveValue("");
@@ -94,39 +98,52 @@ test("Clear empties state and Reset example restores the default text", async ({
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByText("Add text in Plaintext view to inspect token boundaries.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Reset example" }).click();
+  await page.getByRole("button", { name: "Reset patches" }).click();
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(baseExample.text);
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
 });
 
-test("example buttons load distinct examples", async ({ page }) => {
-  for (const example of examples.slice(1)) {
-    await page.getByRole("tab", { name: "Plaintext" }).click();
-    await page.getByRole("button", { name: example.name }).click();
-    await expect(page.getByLabel("Plaintext editor")).toHaveValue(example.text);
-  }
+test("patch layer buttons apply and remove prompt diffs", async ({ page }) => {
+  const workspaceButton = page.getByRole("button", { name: /Workspace/ });
+  const skillButton = page.getByRole("button", { name: /1 skill/ });
+  const editor = page.getByLabel("Plaintext editor");
+  const baseTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
 
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  await page.getByRole("button", { name: baseExample.name }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(baseExample.text);
+  await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
+  await workspaceButton.click();
+  await expect(workspaceButton).toHaveAttribute("aria-pressed", "true");
+  await expect(editor).toHaveValue(composePrompt(["workspace"]));
+  await expect(page.getByLabel("Selected patch diff preview")).toContainText("diff --git");
+  await expect(page.getByLabel("Selected patch diff preview")).toContainText("+<workspace_info>");
+  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(baseTokens);
+
+  await skillButton.click();
+  await expect(editor).toHaveValue(composePrompt(["workspace", "one-skill"]));
+  await expect(page.getByLabel("Selected patch diff preview")).toContainText("+<name>web-design-reviewer</name>");
+
+  await workspaceButton.click();
+  await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
+  await expect(editor).toHaveValue(composePrompt(["one-skill"]));
+  await expect(editor).not.toHaveValue(/workspace_info/);
 });
 
-test("examples isolate canonical Copilot context layers", async ({ page }) => {
+test("patch layers isolate canonical Copilot context sources", async ({ page }) => {
   const expectedFragments = [
-    ["00 Base system", "coding_agent_instructions"],
-    ["01 + workspace", "workspace_info"],
-    ["02 + AGENTS.md", "AGENTS.md"],
-    ["03 + repo instructions", ".github/copilot-instructions.md"],
-    ["04 + one skill", "web-design-reviewer"],
-    ["05 + one MCP tool", "mcp_github"],
-    ["06 + custom agent", "SecurityReviewer"],
-    ["07 Full stack", "Terminals:"],
+    ["Workspace", "workspace_info"],
+    ["AGENTS.md", "AGENTS.md"],
+    ["Repo instructions", ".github/copilot-instructions.md"],
+    ["1 skill", "web-design-reviewer"],
+    ["1 MCP tool", "mcp_github"],
+    ["Custom agent", "SecurityReviewer"],
+    ["Terminal", "Terminals:"],
   ] as const;
 
   for (const [name, fragment] of expectedFragments) {
-    await page.getByRole("button", { name }).click();
+    await page.getByRole("button", { name: new RegExp(name) }).click();
     expect(await page.getByLabel("Plaintext editor").inputValue()).toContain(fragment);
   }
+
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(fullPrompt);
 });
 
 test("model selector changes context copy and meter width", async ({ page }) => {
@@ -161,7 +178,8 @@ test("mobile viewport keeps visible features usable", async ({ page }) => {
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Reset example" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Workspace/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reset patches" })).toBeVisible();
   await expect(page.getByLabel("Tokenizer statistics")).toBeVisible();
   await expect(page.locator(".token-segment").first()).toBeVisible();
 

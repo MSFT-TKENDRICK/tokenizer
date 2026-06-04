@@ -10,7 +10,11 @@ const scenarios = [
     viewport: { width: 1440, height: 900 },
     run: async (page) => {
       await page.goto(baseURL);
-      await page.getByRole("button", { name: "07 Full stack" }).click();
+      await page.getByRole("button", { name: /Workspace/ }).click();
+      await page.getByRole("button", { name: /AGENTS.md/ }).click();
+      await page.getByRole("button", { name: /1 skill/ }).click();
+      await page.getByRole("button", { name: /1 MCP tool/ }).click();
+      await page.getByRole("button", { name: /Custom agent/ }).click();
       await page.getByRole("tab", { name: "Tokens" }).click();
       await page.getByLabel("Model context").selectOption({
         label: "Small context (8K) · 8,192 tokens",
@@ -31,7 +35,7 @@ const scenarios = [
     viewport: { width: 390, height: 844 },
     run: async (page) => {
       await page.goto(baseURL);
-      await page.getByRole("button", { name: "04 + one skill" }).click();
+      await page.getByRole("button", { name: /1 skill/ }).click();
       await page.getByRole("tab", { name: "Tokens" }).click();
     },
   },
