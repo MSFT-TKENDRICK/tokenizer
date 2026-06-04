@@ -159,7 +159,7 @@ h2 {
 .hero-card small,
 .chip-count,
 .help-text,
-.empty-state,
+.empty-view,
 .context-box p {
   color: var(--cp-text-muted);
 }
@@ -189,26 +189,78 @@ h2 {
   margin-bottom: 12px;
 }
 
-textarea {
-  width: 100%;
-  min-height: 320px;
-  resize: vertical;
-  padding: 16px;
-  border: 1px solid var(--cp-border-strong);
+.view-toggle {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  padding: 4px;
+  margin-bottom: 16px;
+  border: 1px solid var(--cp-border);
   border-radius: 0.625rem;
-  outline: none;
-  background: var(--cp-surface);
-  color: var(--cp-text);
-  font-family: Consolas, "Courier New", Courier, monospace;
-  line-height: 1.5;
+  background: var(--cp-surface-soft);
 }
 
-textarea:focus,
+.view-toggle button {
+  min-width: 112px;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--cp-text-muted);
+  font-weight: 800;
+}
+
+.view-toggle button.active,
+.view-toggle button[aria-selected="true"] {
+  background: var(--cp-surface);
+  color: var(--cp-text);
+}
+
+.text-surface {
+  border: 1px solid var(--cp-border-strong);
+  border-radius: 16px;
+  background: var(--cp-bg-elevated);
+}
+
+.text-viewport {
+  width: 100%;
+  min-height: 430px;
+  padding: 24px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--cp-text);
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: clamp(1.15rem, 2.2vw, 1.6rem);
+  line-height: 1.72;
+  outline: none;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.text-input {
+  display: block;
+  resize: vertical;
+}
+
+.readonly-view {
+  user-select: text;
+}
+
+.text-viewport:focus,
+.text-surface:focus-within,
 select:focus,
 button:focus-visible {
   border-color: var(--cp-accent);
   outline: 3px solid var(--cp-highlight);
   outline-offset: 2px;
+}
+
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 
 .controls-row {
@@ -339,32 +391,9 @@ dd {
   line-height: 1.5;
 }
 
-.token-panel {
-  margin-top: 20px;
-}
-
-.token-viewer {
-  display: grid;
-  align-content: space-between;
-  gap: 28px;
-  min-height: 440px;
-  padding: 24px;
-  border: 1px solid var(--cp-border);
-  border-radius: 16px;
-  background: var(--cp-bg-elevated);
-}
-
 .token-stream {
-  align-content: start;
-  min-height: 310px;
-  overflow-x: auto;
-  padding: 0;
   color: var(--cp-accent-fg);
-  font-family: Consolas, "Courier New", Courier, monospace;
-  font-size: clamp(1.35rem, 2.6vw, 1.85rem);
-  line-height: 1.72;
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
 }
 
 .token-segment {
@@ -413,38 +442,6 @@ dd {
   background: var(--cp-accent);
 }
 
-.token-toggle {
-  display: inline-flex;
-  width: max-content;
-  padding: 4px;
-  border: 1px solid var(--cp-border);
-  border-radius: 0.625rem;
-  background: var(--cp-surface);
-}
-
-.token-toggle button {
-  min-width: 108px;
-  border: 0;
-  border-radius: 0.5rem;
-  background: var(--cp-surface);
-  color: var(--cp-text-muted);
-  font-weight: 800;
-}
-
-.token-toggle button.active,
-.token-toggle button[aria-selected="true"] {
-  background: var(--cp-surface-soft);
-  color: var(--cp-text);
-}
-
-.empty-state {
-  margin-bottom: 0;
-  padding: 20px;
-  border: 1px dashed var(--cp-border-strong);
-  border-radius: 0.625rem;
-  text-align: center;
-}
-
 @media (max-width: 900px) {
   .hero,
   .workspace {
@@ -464,8 +461,7 @@ dd {
 
   .hero,
   .editor-card,
-  .stats-card,
-  .token-panel {
+  .stats-card {
     padding: 18px;
   }
 
@@ -474,7 +470,17 @@ dd {
     grid-template-columns: 1fr;
   }
 
-  textarea {
-    min-height: 260px;
+  .view-toggle {
+    width: 100%;
+  }
+
+  .view-toggle button {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .text-viewport {
+    min-height: 300px;
+    padding: 18px;
   }
 }

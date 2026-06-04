@@ -8,6 +8,8 @@ import {
 } from "./lib/tokenizer";
 import "./App.css";
 
+type ViewMode = "plain" | "tokens" | "ids";
+
 const examples = [
   {
     name: "Tokenizer sample",
@@ -39,7 +41,7 @@ function visibleTokenText(token: Token) {
 export default function App() {
   const [text, setText] = useState(examples[0].text);
   const [modelIndex, setModelIndex] = useState(2);
-  const [tokenView, setTokenView] = useState<"text" | "ids">("text");
+  const [viewMode, setViewMode] = useState<ViewMode>("plain");
 
   const selectedModel = modelIndex === -1 ? undefined : DEFAULT_MODEL_LIMITS[modelIndex];
   const tokens = useMemo(() => tokenize(text), [text]);
@@ -70,19 +72,89 @@ export default function App() {
         <div className="editor-card panel">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Input</p>
-              <h2>Text to tokenize</h2>
+              <p className="eyebrow">Workspace</p>
+              <h2>Text, tokens, and token IDs</h2>
             </div>
-            <button className="ghost-button" type="button" onClick={() => setText("")}>Clear</button>
+            <span className="chip-count">{formatNumber(displayedTokens.length)} shown</span>
           </div>
 
-          <textarea
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder="Paste or type text here..."
-            aria-label="Text to tokenize"
-            spellCheck="true"
-          />
+          <div className="view-toggle" role="tablist" aria-label="Tokenizer view mode">
+            <button
+              aria-selected={viewMode === "plain"}
+              className={viewMode === "plain" ? "active" : ""}
+              role="tab"
+              type="button"
+              onClick={() => setViewMode("plain")}
+            >
+              Plaintext
+            </button>
+            <button
+              aria-selected={viewMode === "tokens"}
+              className={viewMode === "tokens" ? "active" : ""}
+              role="tab"
+              type="button"
+              onClick={() => setViewMode("tokens")}
+            >
+              Tokens
+            </button>
+            <button
+              aria-selected={viewMode === "ids"}
+              className={viewMode === "ids" ? "active" : ""}
+              role="tab"
+              type="button"
+              onClick={() => setViewMode("ids")}
+            >
+              Token IDs
+            </button>
+          </div>
+
+          <div className="text-surface">
+            {viewMode === "plain" ? (
+              <textarea
+                className="text-viewport text-input"
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder="Paste or type text here..."
+                aria-label="Plaintext editor"
+                spellCheck="true"
+              />
+            ) : tokens.length === 0 ? (
+              <div
+                className="text-viewport readonly-view empty-view"
+                aria-label={viewMode === "tokens" ? "Token text view" : "Token ID view"}
+              >
+                Add text in Plaintext view to inspect token boundaries.
+              </div>
+            ) : (
+              <div
+                className="text-viewport readonly-view token-stream"
+                aria-label={viewMode === "tokens" ? "Token text view" : "Token ID view"}
+                tabIndex={0}
+              >
+                {displayedTokens.map((token) => (
+                  <span
+                    className={`token-segment token-${token.index % 6} token-kind-${token.category}`}
+                    key={`${token.index}-${token.start}`}
+                    title={`Token ${token.index + 1} · ${token.category} · ${token.bytes} bytes · ID ${token.id}`}
+                  >
+                    {viewMode === "tokens" ? visibleTokenText(token) : token.id}
+                  </span>
+                ))}
+                {tokens.length > displayedTokens.length && (
+                  <span className="token-segment token-more">
+                    +{formatNumber(tokens.length - displayedTokens.length)} more
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="editor-actions">
+            <button className="ghost-button" type="button" onClick={() => setText("")}>Clear</button>
+            <button className="primary-button" type="button" onClick={() => setText(examples[0].text)}>
+              Reset example
+            </button>
+          </div>
 
           <div className="controls-row">
             <label>
@@ -99,9 +171,6 @@ export default function App() {
                 ))}
               </select>
             </label>
-            <button className="primary-button" type="button" onClick={() => setText(examples[0].text)}>
-              Reset example
-            </button>
           </div>
 
           <div className="example-grid" aria-label="Load example text">
@@ -147,59 +216,6 @@ export default function App() {
             Counts are deterministic in this app and intended for planning. Production model tokenizers may differ by provider and model version.
           </p>
         </aside>
-      </section>
-
-      <section className="panel token-panel" aria-labelledby="token-title">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Visualization</p>
-            <h2 id="token-title">Token visualization</h2>
-          </div>
-          <span className="chip-count">{formatNumber(displayedTokens.length)} shown</span>
-        </div>
-
-        {tokens.length === 0 ? (
-          <p className="empty-state">Add text above to see tokens highlighted as a contiguous stream.</p>
-        ) : (
-          <div className="token-viewer" aria-label="Tokenized text visualization">
-            <div className="token-stream" aria-label={tokenView === "text" ? "Token text view" : "Token ID view"}>
-              {displayedTokens.map((token) => (
-                <span
-                  className={`token-segment token-${token.index % 6} token-kind-${token.category}`}
-                  key={`${token.index}-${token.start}`}
-                  title={`Token ${token.index + 1} · ${token.category} · ${token.bytes} bytes · ID ${token.id}`}
-                >
-                  {tokenView === "text" ? visibleTokenText(token) : token.id}
-                </span>
-              ))}
-              {tokens.length > displayedTokens.length && (
-                <span className="token-segment token-more">
-                  +{formatNumber(tokens.length - displayedTokens.length)} more
-                </span>
-              )}
-            </div>
-            <div className="token-toggle" role="tablist" aria-label="Token visualization mode">
-              <button
-                aria-selected={tokenView === "text"}
-                className={tokenView === "text" ? "active" : ""}
-                role="tab"
-                type="button"
-                onClick={() => setTokenView("text")}
-              >
-                Text
-              </button>
-              <button
-                aria-selected={tokenView === "ids"}
-                className={tokenView === "ids" ? "active" : ""}
-                role="tab"
-                type="button"
-                onClick={() => setTokenView("ids")}
-              >
-                Token IDs
-              </button>
-            </div>
-          </div>
-        )}
       </section>
     </main>
   );

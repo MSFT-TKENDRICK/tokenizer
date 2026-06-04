@@ -27,29 +27,42 @@ test.afterEach(async ({ page }, testInfo) => {
   await expect(page).toHaveTitle(/Tokenizer/);
 });
 
-test("renders the tokenizer workspace with the default example and token stream", async ({ page }) => {
-  await expect(page.getByLabel("Text to tokenize")).toHaveValue(productNote);
+test("renders the tokenizer workspace with the default plaintext view", async ({ page }) => {
+  await expect(page.getByRole("tab", { name: "Plaintext" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(productNote);
   await expect(page.getByLabel("Current token summary")).toContainText(/\d+/);
+  await expect(page.getByText(/\d+ shown/)).toBeVisible();
+});
 
-  const stream = page.getByLabel("Tokenized text visualization");
+test("toggles one shared viewport between plaintext, tokens, and token IDs", async ({ page }) => {
+  const plaintextBox = page.getByLabel("Plaintext editor");
+  const plaintextBounds = await plaintextBox.boundingBox();
+  expect(plaintextBounds).not.toBeNull();
+
+  await page.getByRole("tab", { name: "Tokens" }).click();
+  await expect(page.getByRole("tab", { name: "Tokens" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Plaintext editor")).toBeHidden();
+  const stream = page.getByLabel("Token text view");
   await expect(stream).toContainText("Many words map to one token");
   await expect(stream).toContainText("Unicode characters like emojis");
   await expect(stream).toContainText("1234567890");
-  await expect(page.getByRole("tab", { name: "Text" })).toHaveAttribute("aria-selected", "true");
 
   const firstToken = page.locator(".token-segment").first();
   await expect(firstToken).toHaveText("Many");
   await expect(firstToken).toHaveAttribute("title", /Token 1 · word · 4 bytes · ID \d+/);
+  const tokenBounds = await stream.boundingBox();
+  expect(tokenBounds?.width).toBeCloseTo(plaintextBounds?.width ?? 0, 0);
 
   await page.getByRole("tab", { name: "Token IDs" }).click();
   await expect(page.getByRole("tab", { name: "Token IDs" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Token ID view")).toBeVisible();
   await expect(firstToken).toHaveText(/^\d+$/);
-  await page.getByRole("tab", { name: "Text" }).click();
-  await expect(firstToken).toHaveText("Many");
+  await page.getByRole("tab", { name: "Plaintext" }).click();
+  await expect(page.getByLabel("Plaintext editor")).toBeVisible();
 });
 
 test("typing and pasting input updates counts and token visualization", async ({ page }) => {
-  const textarea = page.getByLabel("Text to tokenize");
+  const textarea = page.getByLabel("Plaintext editor");
 
   await textarea.fill("");
   await textarea.pressSequentially("Hello, ");
@@ -63,6 +76,7 @@ test("typing and pasting input updates counts and token visualization", async ({
   await expect(page.getByLabel("Current token summary")).toContainText("7");
   await expect(page.getByText("7 shown")).toBeVisible();
 
+  await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.locator(".token-segment", { hasText: "Hello" })).toHaveAttribute(
     "title",
     /Token 1 · word · 5 bytes · ID \d+/,
@@ -76,37 +90,43 @@ test("typing and pasting input updates counts and token visualization", async ({
 test("Clear empties state and Reset example restores the default text", async ({ page }) => {
   await page.getByRole("button", { name: "Clear" }).click();
 
-  await expect(page.getByLabel("Text to tokenize")).toHaveValue("");
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue("");
   await expect(metric(page, "Tokens")).toHaveText("0");
   await expect(metric(page, "Characters")).toHaveText("0");
   await expect(metric(page, "Words")).toHaveText("0");
   await expect(metric(page, "Bytes")).toHaveText("0");
   await expect(page.getByText("0 shown")).toBeVisible();
-  await expect(page.getByText("Add text above to see tokens highlighted as a contiguous stream.")).toBeVisible();
+
+  await page.getByRole("tab", { name: "Tokens" }).click();
+  await expect(page.getByText("Add text in Plaintext view to inspect token boundaries.")).toBeVisible();
 
   await page.getByRole("button", { name: "Reset example" }).click();
-  await expect(page.getByLabel("Text to tokenize")).toHaveValue(productNote);
-  await expect(page.getByLabel("Text to tokenize")).toHaveValue(productNote);
+  await page.getByRole("tab", { name: "Plaintext" }).click();
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(productNote);
 });
 
 test("example buttons load distinct examples", async ({ page }) => {
   await page.getByRole("button", { name: "Code sample" }).click();
-  await expect(page.getByLabel("Text to tokenize")).toHaveValue(codeSample);
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(codeSample);
+  await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.locator(".token-segment", { hasText: "function" })).toBeVisible();
   await expect(page.locator(".token-segment", { hasText: "return" })).toBeVisible();
 
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   await page.getByRole("button", { name: "Mixed language" }).click();
-  await expect(page.getByLabel("Text to tokenize")).toHaveValue(mixedLanguage);
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(mixedLanguage);
+  await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.locator(".token-segment", { hasText: "128000" })).toBeVisible();
   await expect(page.locator(".token-segment", { hasText: "🚀" })).toBeVisible();
 
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   await page.getByRole("button", { name: "Tokenizer sample" }).click();
-  await expect(page.getByLabel("Text to tokenize")).toHaveValue(productNote);
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(productNote);
 });
 
 test("model selector changes context copy and meter width", async ({ page }) => {
   const longPrompt = `${"token ".repeat(1_000)}done`;
-  await page.getByLabel("Text to tokenize").fill(longPrompt);
+  await page.getByLabel("Plaintext editor").fill(longPrompt);
   await expect(metric(page, "Tokens")).toHaveText("2,001");
 
   const meter = page.locator(".meter span");
@@ -132,7 +152,9 @@ test("mobile viewport keeps visible features usable", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Tokenizer workspace" })).toBeVisible();
-  await expect(page.getByLabel("Text to tokenize")).toBeVisible();
+  await expect(page.getByLabel("Plaintext editor")).toBeVisible();
+  await page.getByRole("tab", { name: "Tokens" }).click();
+  await expect(page.getByLabel("Token text view")).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Reset example" })).toBeVisible();
   await expect(page.getByLabel("Tokenizer statistics")).toBeVisible();

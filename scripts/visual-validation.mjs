@@ -11,6 +11,7 @@ const scenarios = [
     run: async (page) => {
       await page.goto(baseURL);
       await page.getByRole("button", { name: "Mixed language" }).click();
+      await page.getByRole("tab", { name: "Tokens" }).click();
       await page.getByLabel("Model context").selectOption({
         label: "Small context (8K) · 8,192 tokens",
       });
@@ -21,7 +22,8 @@ const scenarios = [
     viewport: { width: 1280, height: 860 },
     run: async (page) => {
       await page.goto(baseURL);
-      await page.getByLabel("Text to tokenize").fill("Hello, world! 🚀\nA second line with 42 tokens?");
+      await page.getByLabel("Plaintext editor").fill("Hello, world! 🚀\nA second line with 42 tokens?");
+      await page.getByRole("tab", { name: "Token IDs" }).click();
     },
   },
   {
@@ -30,6 +32,7 @@ const scenarios = [
     run: async (page) => {
       await page.goto(baseURL);
       await page.getByRole("button", { name: "Code sample" }).click();
+      await page.getByRole("tab", { name: "Tokens" }).click();
     },
   },
 ];
@@ -52,7 +55,7 @@ for (const scenario of scenarios) {
   try {
     await scenario.run(page);
     await page.getByRole("heading", { name: "Tokenizer workspace" }).waitFor();
-    await page.getByLabel("Text to tokenize").waitFor();
+    await page.getByLabel(/Token (text|ID) view/).waitFor();
     await page.locator(".token-segment").first().waitFor();
     const hasHorizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
