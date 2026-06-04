@@ -1,12 +1,12 @@
 import { mkdir } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
-const baseURL = "http://127.0.0.1:4173";
-const outputDir = "visual-results";
+const baseURL = process.env.VISUAL_BASE_URL ?? "http://127.0.0.1:4173";
+const outputDir = process.env.VISUAL_OUTPUT_DIR ?? "visual-results";
 
 const scenarios = [
   {
-    name: "desktop-default",
+    name: "desktop-tokens",
     viewport: { width: 1440, height: 900 },
     run: async (page) => {
       await page.goto(baseURL);
@@ -18,7 +18,7 @@ const scenarios = [
     },
   },
   {
-    name: "desktop-edited",
+    name: "desktop-token-ids",
     viewport: { width: 1280, height: 860 },
     run: async (page) => {
       await page.goto(baseURL);
@@ -27,7 +27,7 @@ const scenarios = [
     },
   },
   {
-    name: "mobile-default",
+    name: "mobile-tokens",
     viewport: { width: 390, height: 844 },
     run: async (page) => {
       await page.goto(baseURL);
@@ -60,6 +60,25 @@ for (const scenario of scenarios) {
     const hasHorizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     );
+    const viewportMetrics = await page.evaluate(() => {
+      const surface = document.querySelector(".text-surface")?.getBoundingClientRect();
+      const view = document.querySelector(".text-viewport")?.getBoundingClientRect();
+      const style = document.querySelector(".text-viewport")
+        ? getComputedStyle(document.querySelector(".text-viewport"))
+        : undefined;
+      return {
+        surfaceWidth: surface?.width ?? 0,
+        viewWidth: view?.width ?? 0,
+        fontFamily: style?.fontFamily ?? "",
+        fontSize: style?.fontSize ?? "",
+      };
+    });
+    if (viewportMetrics.surfaceWidth === 0 || viewportMetrics.viewWidth === 0) {
+      failures.push(`${scenario.name}: shared viewport did not render`);
+    }
+    if (!viewportMetrics.fontFamily.includes("Consolas")) {
+      failures.push(`${scenario.name}: expected monospace viewport font`);
+    }
     if (hasHorizontalOverflow) {
       failures.push(`${scenario.name}: horizontal overflow detected`);
     }
