@@ -11,5 +11,6 @@ playwright-report
 test-results
 visual-results
 visual-results-live
+visual-diff
 .vite
 *.tsbuildinfo

@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Command Line Editorial</title>
+  <style>
+    :root {
+      --color-primary: #000000;
+      --color-background: #ffffff;
+      --color-muted: #555555;
+      --color-accent: #0067b8;
+      --color-border: #d9d9d9;
+      --color-border-subtle: #e0e0e0;
+      --color-hover-highlight: #d5f5c0;
+      --color-code-block: #1d1e22;
+      --color-dark-primary: #ffffff;
+      --spacing-compact: 8px;
+      --spacing-paragraph: 1.25em;
+      --spacing-section: 48px;
+      --rounded-inline-code: 4px;
+      --rounded-block: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #ffffff;
+      color: #000000;
+      font-family: Inter, 'DM Sans', 'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.7;
+    font-weight: 400;
+      padding: 0;
+    }
+
+    .article {
+      max-width: 740px;
+      margin: 0 auto;
+      background: #ffffff;
+      color: #000000;
+      font-family: Inter, 'DM Sans', 'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.7;
+    font-weight: 400;
+      padding: 0 0 var(--spacing-section);
+    }
+
+    .site-header {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding: 24px 30px 48px;
+      color: var(--color-primary);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--color-primary);
+      font-family: 'Segoe UI', Inter, Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.5;
+    font-weight: 500;
+    }
+
+    .brand-mark {
+      width: 20px;
+      height: 16px;
+      display: inline-block;
+      position: relative;
+      border-bottom: 3px solid var(--color-primary);
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      width: 10px;
+      height: 3px;
+      background: var(--color-primary);
+      transform-origin: left center;
+    }
+
+    .brand-mark::before {
+      top: 2px;
+      transform: rotate(42deg);
+    }
+
+    .brand-mark::after {
+      top: 10px;
+      transform: rotate(-42deg);
+    }
+
+    .site-kicker,
+    .site-tools {
+      font-family: Consolas, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 400;
+    }
+
+    .site-kicker {
+      margin: 0;
+      text-align: center;
+      color: var(--color-primary);
+    }
+
+    .site-tools {
+      display: flex;
+      justify-content: flex-end;
+      gap: 14px;
+    }
+
+    .hero-visual {
+      width: 740px;
+      max-width: calc(100vw - 32px);
+      height: 370px;
+      margin: 0 auto 38px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: var(--color-hover-highlight);
+    }
+
+    .hero-visual svg {
+      width: 310px;
+      max-width: 72%;
+      height: auto;
+      fill: none;
+      stroke: var(--color-primary);
+      stroke-width: 1.2;
+    }
+
+    .hero-title {
+      max-width: 740px;
+      margin: 16px 0 14px;
+      color: #000000;
+      font-family: Inter, 'DM Sans', 'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 42px;
+    line-height: 1.2;
+    font-weight: 500;
+    letter-spacing: -1px;
+    }
+
+    .headline-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .metadata {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 0 0 24px;
+      color: #555555;
+      font-family: Consolas, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 400;
+    }
+
+    .tag {
+      display: inline-block;
+      background: var(--color-primary);
+      color: var(--color-dark-primary);
+      font-family: Consolas, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+    font-size: 10px;
+    line-height: 1.2;
+    font-weight: 700;
+      padding: 6px 8px;
+      border: 0;
+      border-radius: 0px;
+      text-transform: uppercase;
+    }
+
+    .prose {
+      max-width: 740px;
+      color: #000000;
+      font-family: Inter, 'DM Sans', 'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.7;
+    font-weight: 400;
+    }
+
+    .article-summary {
+      color: var(--color-muted);
+      font-family: Consolas, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 400;
+      font-size: 13px;
+      line-height: 23px;
+      margin-bottom: 22px;
+    }
+
+    .prose p,
+    .prose ul,
+    .prose ol,
+    .prose table,
+    .prose pre,
+    .prose figure,
+    .prose blockquote {
+      margin: 0 0 var(--spacing-paragraph);
+    }
+
+    .prose a {
+      background: #ffffff;
+      color: #0067b8;
+      font-family: Inter, 'DM Sans', 'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.7;
+    font-weight: 400;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    .prose a:hover {
+      background: #d5f5c0;
+      color: #000000;
+    }
+
+    code {
+      background: #e0e0e0;
+      color: #000000;
+      font-family: Consolas, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 400;
+      padding: 2px var(--spacing-compact);
+      border-radius: 4px;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #1d1e22;
+      color: #ffffff;
+      font-family: Consolas, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 400;
+      padding: 30px;
+      border-radius: 8px;
+    }
+
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      border-radius: 0;
+    }
+
+    .callout {
+      padding: 18px 22px;
+      border-left: 2px solid #0067b8;
+      background: var(--color-border-subtle);
+      color: var(--color-primary);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 6px;
+      font-family: Inter, 'DM Sans', 'Plus Jakarta Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 20px;
+    line-height: 1.3;
+    font-weight: 500;
+    }
+
+    .media-card {
+      width: 100%;
+      min-height: 150px;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: #e0e0e0;
+      color: #555555;
+      font-family: Consolas, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 400;
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: Consolas, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    font-weight: 400;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border: 1px solid var(--color-border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--color-border-subtle);
+    }
+
+    .divider {
+      height: 1px;
+      margin: var(--spacing-section) 0 24px;
+      background: #d9d9d9;
+    }
+
+    @media (max-width: 700px) {
+      .site-header {
+        grid-template-columns: 1fr auto;
+        padding: 22px 16px 34px;
+      }
+
+      .site-kicker {
+        display: none;
+      }
+
+      .brand {
+        font-size: 16px;
+      }
+
+      .hero-visual {
+        width: calc(100vw - 32px);
+        height: 238px;
+        margin-bottom: 36px;
+      }
+
+      .article {
+        max-width: none;
+        padding: 0 16px var(--spacing-section);
+      }
+
+      .hero-title {
+        font-size: 28px;
+        line-height: 1.2;
+        letter-spacing: -0.5px;
+      }
+
+      .headline-row {
+        margin-bottom: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Command Line editorial header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Command Line</span></div>
+    <p class="site-kicker">By builders, for builders.</p>
+    <div class="site-tools" aria-label="Page tools"><span>⌕</span><span>☼</span><span>▦</span></div>
+  </header>
+
+  <div class="hero-visual" aria-label="Abstract editorial hero visual">
+    <svg viewBox="0 0 320 320" role="img" aria-label="Abstract line drawing">
+      <path d="M165 36c54 12 88 61 78 110s-61 81-112 86-85-20-73-62 67-42 90-76 7-66 17-58z" />
+      <path d="M186 46c47 23 68 78 46 123s-78 61-127 53-76-40-54-77 75-25 106-53 17-65 29-46z" />
+      <path d="M206 64c37 33 42 91 11 129s-89 43-133 24-62-55-31-85 78-8 116-27 25-59 37-41z" />
+      <path d="M222 88c23 40 10 95-29 122s-96 17-132-12-43-67-5-88 77 10 119 1 34-42 47-23z" />
+      <path d="M229 116c8 44-22 91-67 105s-95-11-119-48-18-74 23-84 69 26 110 29 39-23 53-2z" />
+      <path d="M224 146c-7 43-51 78-98 77s-86-40-97-81 8-73 49-70 56 42 94 58 38-5 52 16z" />
+    </svg>
+  </div>
+
+  <article class="article" aria-labelledby="fixture-title">
+    <header>
+      <div class="headline-row">
+        <span class="tag">Validation fixture</span>
+        <span class="tag">Share</span>
+      </div>
+      <h1 class="hero-title" id="fixture-title">Turn design tokens into visual parity fixtures</h1>
+      <p class="article-summary">A generated design fixture for comparing the Command Line editorial system against the source site's restrained article layout, typography rhythm, colors, and spacing.</p>
+      <p class="metadata"><span>By DESIGN.md validation</span><span>Lint: 0 errors / 0 warnings / 1 infos</span></p>
+    </header>
+
+    <section class="prose" aria-label="Representative article content">
+      <p>Command Line Editorial is a restrained visual system for technical publishing. It treats the page like a precise article shell: centered content, high contrast, visible structure, and just enough blue accent to communicate focus or interaction. The mood is practical, sharp, and readable rather than decorative.</p>
+      <p>
+        This throw-away page renders article prose, <a href="#token-table">link treatment</a>,
+        inline <code>code</code>, lists, a code block, a callout, and structured media from
+        the resolved design.md tokens.
+      </p>
+
+      <ul>
+        <li>Centered article shell with a 740px maximum width.</li>
+        <li>Comfortable prose rhythm held in a direct single-column measure.</li>
+        <li>Monospace metadata, captions, tags, and command-adjacent chrome.</li>
+      </ul>
+
+      <pre><code>const source = "DESIGN.md";
+const lintErrors = 0;
+renderFixture({ source, lintErrors });</code></pre>
+
+      <blockquote class="callout">
+        <strong>Feedback loop applied</strong>
+        The fixture is generated only after the design.md linter resolves tokens and reports zero errors.
+      </blockquote>
+
+      <figure>
+        <div class="media-card">Flat media/card surface using the media component tokens.</div>
+        <figcaption class="metadata">Caption treatment: bounded, editorial, and intentionally non-production.</figcaption>
+      </figure>
+
+      <table id="token-table">
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Token evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Hero title</td>
+            <td>Uses <code>components.heroTitle</code> typography and color.</td>
+          </tr>
+          <tr>
+            <td>Code block</td>
+            <td>Uses <code>components.codeBlock</code> background, text, radius, and padding.</td>
+          </tr>
+          <tr>
+            <td>Link hover</td>
+            <td>Uses <code>components.link</code> and <code>components.linkHover</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </article>
+</body>
+</html>
