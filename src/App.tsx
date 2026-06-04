@@ -103,9 +103,24 @@ export default function App() {
                 Token IDs
               </button>
             </div>
-            <span className="token-count" aria-label="Current token count">
-              {formatNumber(summary.tokens)} tokens
-            </span>
+            <dl className="inline-metrics" aria-label="Prompt metrics">
+              <div data-metric="tokens">
+                <dd aria-label="Current token count">{formatNumber(summary.tokens)}</dd>
+                <dt>tokens</dt>
+              </div>
+              <div data-metric="characters">
+                <dd>{formatNumber(summary.characters)}</dd>
+                <dt>characters</dt>
+              </div>
+              <div data-metric="words">
+                <dd>{formatNumber(summary.words)}</dd>
+                <dt>words</dt>
+              </div>
+              <div data-metric="bytes">
+                <dd>{formatNumber(summary.bytes)}</dd>
+                <dt>bytes</dt>
+              </div>
+            </dl>
           </div>
 
           <div className="text-surface">
@@ -183,19 +198,6 @@ export default function App() {
         </div>
 
         <aside className="stats-card panel" aria-label="Tokenizer statistics">
-          <div className="section-heading compact">
-            <div>
-              <p className="eyebrow">Counts</p>
-              <h2>Prompt metrics</h2>
-            </div>
-          </div>
-
-          <dl className="stats-grid">
-            <div><dt>Characters</dt><dd>{formatNumber(summary.characters)}</dd></div>
-            <div><dt>Words</dt><dd>{formatNumber(summary.words)}</dd></div>
-            <div><dt>Bytes</dt><dd>{formatNumber(summary.bytes)}</dd></div>
-          </dl>
-
           <div className="context-box">
             <div className="context-label">
               <span>{selectedModel?.name ?? emptyModel.name}</span>
