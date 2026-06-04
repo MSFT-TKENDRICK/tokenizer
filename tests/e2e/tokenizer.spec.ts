@@ -60,7 +60,7 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByLabel("Selected context preview")).toContainText("No context added.");
   await expect(page.getByText("Diffs")).toHaveCount(0);
   await expect(page.getByText("Patch", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Works cited" })).toBeVisible();
+  await expect(page.locator("#references-title")).toHaveText("References");
   await expect(page.getByText("Primary pricing reference for Copilot model input")).toBeVisible();
   await expect(page.getByRole("link", { name: /docs\.github\.com\/en\/copilot/ })).toHaveAttribute(
     "href",

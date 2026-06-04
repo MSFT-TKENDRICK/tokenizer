@@ -605,8 +605,7 @@ export default function App() {
       </section>
 
       <footer className="references" aria-labelledby="references-title">
-        <p className="eyebrow">References</p>
-        <h2 id="references-title">Works cited</h2>
+        <p className="eyebrow" id="references-title">References</p>
         <ol>
           <li>
             <cite>
