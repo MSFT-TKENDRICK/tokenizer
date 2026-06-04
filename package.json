@@ -9,6 +9,7 @@
     "build:pages": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest --run",
+    "test:a11y": "playwright test tests/e2e/accessibility.spec.ts",
     "test:e2e": "playwright test",
     "test:visual": "node scripts/visual-validation.mjs",
     "typecheck": "tsc -b --pretty false",
@@ -21,6 +22,7 @@
     "react-dom": "latest"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@google/design.md": "^0.2.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "latest",

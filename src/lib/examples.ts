@@ -56,10 +56,10 @@ Runnable tasks:
 </workspace_info>`,
   },
   {
-    id: "agents-md",
-    name: "AGENTS.md",
+    id: "instructions",
+    name: "Instructions",
     icon: "book",
-    description: "Adds one autonomous-agent instruction file.",
+    description: "Adds AGENTS.md and repository-wide Copilot instructions.",
     content: `<instructions>
 <instruction>
 <file>AGENTS.md</file>
@@ -73,14 +73,6 @@ Runnable tasks:
 - Keep UI copy concise and accessible.
 </content>
 </instruction>
-</instructions>`,
-  },
-  {
-    id: "repo-instructions",
-    name: "Repo instructions",
-    icon: "code",
-    description: "Adds one repository-wide Copilot instruction file.",
-    content: `<instructions>
 <instruction>
 <file>.github/copilot-instructions.md</file>
 <description>Repository-wide custom instructions for GitHub Copilot.</description>
@@ -134,20 +126,6 @@ Choose the most appropriate agent when asked to run a subagent.
 <argumentHint>Provide the code, diff, or repository area to review for security vulnerabilities.</argumentHint>
 </agent>
 </agents>`,
-  },
-  {
-    id: "terminal-context",
-    name: "Terminal",
-    icon: "terminal",
-    description: "Adds one current terminal/session context block.",
-    content: `<context>
-Current date: 2026-06-04.
-Terminals:
-- Terminal: pwsh
-- Last command: npm run build --workspace=frontend
-- Cwd: C:\\workspace\\GitHubCopilot_Customized
-- Exit code: 0
-</context>`,
   },
 ];
 

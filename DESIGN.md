@@ -15,6 +15,7 @@ colors:
   darkSurface: "#1a1a1a"
   darkPrimary: "#ffffff"
   darkMuted: "#999999"
+  darkAccent: "#4da6ff"
   codeBlock: "#1d1e22"
 typography:
   body:
@@ -132,6 +133,10 @@ components:
     backgroundColor: "{colors.hoverHighlight}"
     textColor: "{colors.primary}"
     typography: "{typography.body}"
+  darkLink:
+    backgroundColor: "{colors.darkBackground}"
+    textColor: "{colors.darkAccent}"
+    typography: "{typography.body}"
   shellFrame:
     backgroundColor: "{colors.shell}"
     textColor: "{colors.primary}"
@@ -157,28 +162,40 @@ components:
     backgroundColor: "{colors.darkBackground}"
     textColor: "{colors.darkMuted}"
     typography: "{typography.metadata}"
-  patchComposer:
+  contextControls:
     backgroundColor: "{colors.background}"
     textColor: "{colors.primary}"
     typography: "{typography.metadata}"
     rounded: "{rounded.block}"
     padding: "{spacing.tablet}"
-  patchLayer:
+  contextLayer:
     backgroundColor: "{colors.background}"
     textColor: "{colors.primary}"
     typography: "{typography.metadata}"
     rounded: "{rounded.none}"
     padding: "{spacing.compact}"
-  patchLayerApplied:
+  contextLayerApplied:
     backgroundColor: "{colors.primary}"
     textColor: "{colors.background}"
     typography: "{typography.metadata}"
     rounded: "{rounded.none}"
-  patchDiff:
+  contextDiff:
     backgroundColor: "{colors.codeBlock}"
     textColor: "{colors.hoverHighlight}"
     typography: "{typography.metadata}"
     rounded: "{rounded.block}"
+    padding: "{spacing.compact}"
+  modelSelector:
+    backgroundColor: "{colors.background}"
+    textColor: "{colors.primary}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.none}"
+    padding: "{spacing.compact}"
+  accessibleIconControl:
+    backgroundColor: "{colors.background}"
+    textColor: "{colors.primary}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.none}"
     padding: "{spacing.compact}"
 ---
 
@@ -188,7 +205,7 @@ Command Line Editorial is a restrained visual system for technical publishing. I
 
 ## Colors
 
-Use black text on a white background as the default expression. Muted gray supports dates, authorship, captions, and secondary chrome. Blue is reserved for focus states, links, and selected affordances so it remains meaningful; use the accessible Microsoft link blue for white text and white page backgrounds. Border grays define flat surfaces without introducing heavy depth, while shell gray supports terminal-adjacent frames. Dark mode inverts the reading surface to near-black with white text, softened by dark muted gray and a dark code surface.
+Use black text on a white background as the default expression. Muted gray supports dates, authorship, captions, and secondary chrome. Blue is reserved for focus states, links, and selected affordances so it remains meaningful; use the accessible Microsoft link blue for white text and white page backgrounds, and switch to the lighter dark accent on near-black surfaces. Border grays define flat surfaces without introducing heavy depth, while shell gray supports terminal-adjacent frames. Dark mode inverts the reading surface to near-black with white text, softened by dark muted gray and a dark code surface.
 
 ## Typography
 
@@ -208,10 +225,14 @@ Use sharp tags and editorial labels with no rounding. Inline code can use a smal
 
 ## Components
 
-Page and article containers carry the black-on-white reading experience. Metadata rows use small monospace text and muted color. Links and focus indicators use the blue accent sparingly and visibly. Tags are uppercase monospace labels with sharp corners. Shell frames, dividers, code blocks, and media blocks provide crisp editorial structure. Patch controls should live inside the relevant text surface as compact input chrome, using sharp multi-select icon controls, black applied states, and optional dark diff previews; patch additions reuse the hover highlight token rather than introducing a second success green. Dark page, article, and metadata components define the inverted reading mode without changing the article-led hierarchy.
+Page and article containers carry the black-on-white reading experience. Metadata rows use small monospace text and muted color. Links and focus indicators use the blue accent sparingly and visibly. Tags are uppercase monospace labels with sharp corners. Shell frames, dividers, code blocks, and media blocks provide crisp editorial structure. Model selectors should feel like compact input chrome inside the text surface rather than separate configuration panels; one control should expose the full Copilot model list, Auto selection, usage-based AI credit rate, and legacy multiplier context. Context controls should live inside the relevant text surface as compact input chrome, using sharp multi-select icon controls, black applied states, and optional dark diff previews; context additions reuse the hover highlight token rather than introducing a second success green. Dark page, article, and metadata components define the inverted reading mode without changing the article-led hierarchy.
+
+## Accessibility
+
+Meet WCAG AA contrast for text and WCAG 1.4.11 non-text contrast for icon controls in both light and dark themes. SVG icons inside interactive controls must use `currentColor` so selected, hover, focus, and dark-mode states inherit the same accessible foreground color as surrounding text. Every form control must have a programmatic label even when the visible UI is intentionally compact. Run `npm run test:a11y` for UI changes, alongside visual validation, and fix any automated axe violations before shipping.
 
 ## Do's and Don'ts
 
-Do prioritize readable long-form rhythm, clear hierarchy, crisp borders, and sparse interaction color. Do keep typography medium-weight and editorial. Do keep patch controls visually subordinate to the text input they modify. Do support dark mode with true contrast rather than tinted approximations.
+Do prioritize readable long-form rhythm, clear hierarchy, crisp borders, sparse interaction color, and verified accessibility contrast. Do keep typography medium-weight and editorial. Do keep model and context controls visually subordinate to the text input they modify. Do support dark mode with true contrast rather than tinted approximations.
 
-Don't add decorative gradients, heavy shadows, soft pill tags, crowded sidebars, or multiple competing accent colors. Don't show patch toggles as tabs; use pressed multi-select controls. Don't use monospace for body prose. Don't reduce paragraph line-height below the specified reading rhythm.
+Don't add decorative gradients, heavy shadows, soft pill tags, crowded sidebars, or multiple competing accent colors. Don't show context toggles as tabs; use pressed multi-select controls. Don't use monospace for body prose. Don't reduce paragraph line-height below the specified reading rhythm.

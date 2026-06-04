@@ -5,17 +5,25 @@ import {
   type Token,
 } from "./lib/tokenizer";
 import {
-  COPILOT_MODEL_FAMILIES,
+  COPILOT_MODELS,
+  COPILOT_MODEL_OPTIONS,
   estimateInputAiCredits,
   estimateInputUsd,
   inputAiCreditsPerMillionTokens,
-  modelsForFamily,
+  modelById,
   type CopilotModelFamilyId,
 } from "./lib/copilotModels";
 import { composePrompt, createPatchDiff, promptPatchLayers } from "./lib/examples";
 import "./App.css";
 
 type ViewMode = "plain" | "tokens" | "ids";
+
+const MODEL_GROUPS: readonly { id: CopilotModelFamilyId; label: string }[] = [
+  { id: "anthropic", label: "Copilot · Claude" },
+  { id: "openai", label: "Copilot · OpenAI" },
+  { id: "google", label: "Copilot · Gemini" },
+  { id: "github-microsoft", label: "Copilot · GitHub + Microsoft" },
+];
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
@@ -44,6 +52,21 @@ function visibleTokenText(token: Token) {
 
 function formatMultiplier(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+}
+
+function modelOptionLabel(modelId: string) {
+  const model = modelById(modelId);
+  if (!model) {
+    return modelId;
+  }
+
+  const creditRate = formatAiCredits(inputAiCreditsPerMillionTokens(model));
+  const multiplier =
+    model.legacyPremiumRequestMultiplier === undefined
+      ? "no legacy multiplier"
+      : `${formatMultiplier(model.legacyPremiumRequestMultiplier)}x`;
+  const suffix = model.id === "auto" ? "10% discount" : model.provider;
+  return `${model.name} · ${suffix} · ${creditRate} credits/1M · ${multiplier}`;
 }
 
 function PatchLayerIcon({ icon }: { icon: string }) {
@@ -90,13 +113,11 @@ function PatchLayerIcon({ icon }: { icon: string }) {
 export default function App() {
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [text, setText] = useState(composePrompt([]));
-  const [modelFamilyId, setModelFamilyId] = useState<CopilotModelFamilyId>("openai");
-  const [selectedModelId, setSelectedModelId] = useState("gpt-5.5");
+  const [selectedModelId, setSelectedModelId] = useState("auto");
   const [viewMode, setViewMode] = useState<ViewMode>("plain");
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
-  const familyModels = useMemo(() => modelsForFamily(modelFamilyId), [modelFamilyId]);
-  const selectedModel = familyModels.find((model) => model.id === selectedModelId) ?? familyModels[0];
+  const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
   const tokens = useMemo(() => tokenize(text), [text]);
   const summary = useMemo(() => summarizeTokens(text, tokens, selectedModel), [text, tokens, selectedModel]);
   const displayedTokens = tokens.slice(0, 500);
@@ -138,12 +159,6 @@ export default function App() {
     return tokenize(composePrompt(nextLayerIds)).length - tokens.length;
   }
 
-  function selectFamily(familyId: CopilotModelFamilyId) {
-    const [firstModel] = modelsForFamily(familyId);
-    setModelFamilyId(familyId);
-    setSelectedModelId(firstModel.id);
-  }
-
   return (
     <main className="app-shell" aria-labelledby="app-title">
       <section className="hero panel">
@@ -164,62 +179,6 @@ export default function App() {
               <h2>Text, tokens, and token IDs</h2>
             </div>
           </div>
-
-          <section className="model-selector" aria-label="GitHub Copilot model selector">
-            <div className="model-family-toggle" role="tablist" aria-label="Model family">
-              {COPILOT_MODEL_FAMILIES.map((family) => (
-                <button
-                  aria-selected={modelFamilyId === family.id}
-                  className={modelFamilyId === family.id ? "active" : ""}
-                  key={family.id}
-                  role="tab"
-                  type="button"
-                  onClick={() => selectFamily(family.id)}
-                >
-                  {family.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="model-picker-row">
-              <label>
-                Model
-                <select
-                  aria-label="GitHub Copilot model"
-                  value={selectedModel.id}
-                  onChange={(event) => setSelectedModelId(event.target.value)}
-                >
-                  {familyModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name} · {formatNumber(model.contextWindow)} tokens
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <dl className="model-pricing" aria-label="Model pricing metadata">
-                <div>
-                  <dt>input</dt>
-                  <dd>${formatNumber(selectedModel.pricing.inputPerMillionTokensUsd)}/1M</dd>
-                </div>
-                <div>
-                  <dt>credits</dt>
-                  <dd>{formatAiCredits(inputAiCreditRate)}/1M</dd>
-                </div>
-                <div>
-                  <dt>output</dt>
-                  <dd>${formatNumber(selectedModel.pricing.outputPerMillionTokensUsd)}/1M</dd>
-                </div>
-                <div>
-                  <dt>legacy</dt>
-                  <dd>
-                    {selectedModel.legacyPremiumRequestMultiplier === undefined
-                      ? "—"
-                      : `${formatMultiplier(selectedModel.legacyPremiumRequestMultiplier)}x`}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          </section>
 
           <div className="view-bar">
             <div className="view-toggle" role="tablist" aria-label="Tokenizer view mode">
@@ -276,9 +235,50 @@ export default function App() {
           </div>
 
           <div className="text-surface">
-            <div className="input-toolbar" aria-label="Prompt patch diffs">
-              <span className="patch-label">Diffs</span>
-              <div className="patch-layer-grid" aria-label="Prompt patch layers">
+            <div className="input-toolbar" aria-label="Prompt context controls">
+              <div className="model-compact" aria-label="GitHub Copilot model selector">
+                <label className="model-compact-label" htmlFor="copilot-model">
+                  Model
+                </label>
+                <select
+                  id="copilot-model"
+                  aria-label="GitHub Copilot model"
+                  value={selectedModel.id}
+                  onChange={(event) => setSelectedModelId(event.target.value)}
+                >
+                  <option value="auto">{modelOptionLabel("auto")}</option>
+                  {MODEL_GROUPS.map((group) => (
+                    <optgroup key={group.id} label={group.label}>
+                      {COPILOT_MODELS
+                        .filter((model) => model.familyId === group.id)
+                        .map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {modelOptionLabel(model.id)}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <dl className="model-pricing" aria-label="Model pricing metadata">
+                <div>
+                  <dt>input</dt>
+                  <dd>${formatNumber(selectedModel.pricing.inputPerMillionTokensUsd)}/1M</dd>
+                </div>
+                <div>
+                  <dt>credits</dt>
+                  <dd>{formatAiCredits(inputAiCreditRate)}/1M</dd>
+                </div>
+                <div>
+                  <dt>legacy</dt>
+                  <dd>
+                    {selectedModel.legacyPremiumRequestMultiplier === undefined
+                      ? "—"
+                      : `${formatMultiplier(selectedModel.legacyPremiumRequestMultiplier)}x`}
+                  </dd>
+                </div>
+              </dl>
+              <div className="patch-layer-grid" aria-label="Prompt context layers">
                 {promptPatchLayers.map((layer) => {
                   const isSelected = selectedLayerSet.has(layer.id);
                   const delta = marginalTokenDelta(layer.id);
@@ -289,7 +289,7 @@ export default function App() {
                       className="patch-layer-button"
                       key={layer.id}
                       title={`${layer.name}: ${layer.description}`}
-                      aria-label={`${layer.name} patch`}
+                      aria-label={`${layer.name} context`}
                       type="button"
                       onClick={() => toggleLayer(layer.id)}
                     >
@@ -304,24 +304,14 @@ export default function App() {
                   );
                 })}
               </div>
-              <button className="text-button" type="button" onClick={resetPrompt}>
-                Reset
-              </button>
-              <details className="patch-details">
-                <summary>Patch ({formatNumber(selectedLayerIds.length)})</summary>
-                <div className="patch-preview" aria-label="Selected patch diff preview">
-                  {selectedLayerIds.length === 0 ? (
-                    <p className="patch-empty">No diffs applied.</p>
-                  ) : (
-                    <pre>
-                      {promptPatchLayers
-                        .filter((layer) => selectedLayerSet.has(layer.id))
-                        .map(createPatchDiff)
-                        .join("\n\n")}
-                    </pre>
-                  )}
-                </div>
-              </details>
+              <div className="patch-preview sr-only" aria-label="Selected context preview">
+                {selectedLayerIds.length === 0
+                  ? "No context added."
+                  : promptPatchLayers
+                    .filter((layer) => selectedLayerSet.has(layer.id))
+                    .map(createPatchDiff)
+                    .join("\n\n")}
+              </div>
             </div>
             {viewMode === "plain" ? (
               <textarea
@@ -366,7 +356,7 @@ export default function App() {
           <div className="editor-actions">
             <button className="ghost-button" type="button" onClick={clearPrompt}>Clear</button>
             <button className="primary-button" type="button" onClick={resetPrompt}>
-              Reset patches
+              Restore sample
             </button>
           </div>
 
@@ -397,6 +387,38 @@ export default function App() {
           </p>
         </aside>
       </section>
+
+      <footer className="references" aria-labelledby="references-title">
+        <p className="eyebrow">References</p>
+        <h2 id="references-title">Pricing and billing sources</h2>
+        <ol>
+          <li>
+            <a href="https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing">
+              GitHub Docs: Models and pricing for GitHub Copilot
+            </a>
+          </li>
+          <li>
+            <a href="https://white-cliff-095e8700f.7.azurestaticapps.net/index.html">
+              GitHub Copilot usage-based billing preview
+            </a>
+          </li>
+          <li>
+            <a href="https://user-level-budgets-p--holly-kassel.github.app/">
+              User-level budgets preview
+            </a>
+          </li>
+          <li>
+            <a href="https://share.articulate.com/pmpueguUReJvPTq-7f_aY">
+              Copilot billing training reference
+            </a>
+          </li>
+          <li>
+            <a href="https://copilot-billing-preview.github.com/">
+              Copilot billing preview
+            </a>
+          </li>
+        </ol>
+      </footer>
     </main>
   );
 }

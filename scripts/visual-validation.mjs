@@ -11,10 +11,10 @@ const scenarios = [
     run: async (page) => {
       await page.goto(baseURL);
       await page.getByRole("button", { name: /Workspace/ }).click();
-      await page.getByRole("button", { name: /AGENTS.md/ }).click();
+      await page.getByRole("button", { name: /Instructions/ }).click();
       await page.getByRole("button", { name: /Tools/ }).click();
       await page.getByRole("button", { name: /Custom agent/ }).click();
-      await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption({ label: "GPT-5.4 · 272,000 tokens" });
+      await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4");
       await page.getByRole("tab", { name: "Tokens" }).click();
     },
   },

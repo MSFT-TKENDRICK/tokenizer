@@ -31,6 +31,7 @@ export const COPILOT_MODEL_FAMILIES: readonly CopilotModelFamily[] = [
 ];
 
 export const AI_CREDIT_USD_VALUE = 0.01;
+export const AUTO_MODEL_DISCOUNT = 0.1;
 
 // Internal pricing documentation:
 // - Current usage-based prices are from GitHub Docs, "Models and pricing for GitHub Copilot":
@@ -329,8 +330,36 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
   },
 ];
 
+const AUTO_MODEL_BASE = requireModel("gpt-5.5");
+
+export const COPILOT_AUTO_MODEL: CopilotModel = {
+  ...AUTO_MODEL_BASE,
+  id: "auto",
+  name: "Auto",
+  provider: "Copilot",
+  pricing: {
+    inputPerMillionTokensUsd: AUTO_MODEL_BASE.pricing.inputPerMillionTokensUsd * (1 - AUTO_MODEL_DISCOUNT),
+    cachedInputPerMillionTokensUsd: AUTO_MODEL_BASE.pricing.cachedInputPerMillionTokensUsd * (1 - AUTO_MODEL_DISCOUNT),
+    outputPerMillionTokensUsd: AUTO_MODEL_BASE.pricing.outputPerMillionTokensUsd * (1 - AUTO_MODEL_DISCOUNT),
+  },
+  legacyPremiumRequestMultiplier:
+    AUTO_MODEL_BASE.legacyPremiumRequestMultiplier === undefined
+      ? undefined
+      : AUTO_MODEL_BASE.legacyPremiumRequestMultiplier * (1 - AUTO_MODEL_DISCOUNT),
+  notes: "Auto model selection applies the documented 10% discount; estimates use discounted GPT-5.5 rates as an upper-bound planning proxy because actual routing can vary.",
+};
+
+export const COPILOT_MODEL_OPTIONS: readonly CopilotModel[] = [
+  COPILOT_AUTO_MODEL,
+  ...COPILOT_MODELS,
+];
+
 export function modelsForFamily(familyId: CopilotModelFamilyId) {
   return COPILOT_MODELS.filter((model) => model.familyId === familyId);
+}
+
+export function modelById(modelId: string) {
+  return COPILOT_MODEL_OPTIONS.find((model) => model.id === modelId);
 }
 
 export function usdToAiCredits(usd: number) {
@@ -351,4 +380,13 @@ export function estimateInputUsd(tokenCount: number, model: CopilotModel) {
 
 export function estimateInputAiCredits(tokenCount: number, model: CopilotModel) {
   return usdToAiCredits(estimateInputUsd(tokenCount, model));
+}
+
+function requireModel(modelId: string) {
+  const model = COPILOT_MODELS.find((candidate) => candidate.id === modelId);
+  if (!model) {
+    throw new Error(`Unknown Copilot model: ${modelId}`);
+  }
+
+  return model;
 }

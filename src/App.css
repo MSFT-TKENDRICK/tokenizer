@@ -31,6 +31,7 @@ html[data-theme="dark"] {
   --color-background: #111111;
   --color-shell: #1a1a1a;
   --color-muted: #999999;
+  --color-accent: #4da6ff;
   --color-border: #444444;
   --color-border-subtle: #333333;
   --color-hover-highlight: #1a3a0a;
@@ -161,9 +162,7 @@ h3 {
 .help-text,
 .empty-view,
 .context-box p,
-.patch-layer-description,
-.patch-layer-delta,
-.patch-empty {
+.patch-layer-delta {
   color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: 12px;
@@ -203,57 +202,10 @@ h3 {
   margin-bottom: 24px;
 }
 
-.model-selector {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.model-family-toggle {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  padding: 4px;
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius-block);
-  background: var(--color-code-block);
-}
-
-.model-family-toggle button {
-  min-width: 0;
-  min-height: 38px;
-  border: 0;
-  border-radius: var(--radius-block);
-  background: transparent;
-  color: var(--color-dark-muted);
-  font-family: var(--font-body);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-}
-
-.model-family-toggle button:hover {
-  color: var(--color-dark-primary);
-}
-
-.model-family-toggle button.active,
-.model-family-toggle button[aria-selected="true"] {
-  background: var(--color-muted);
-  color: var(--color-dark-primary);
-}
-
-.model-picker-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
-  gap: 14px;
-  align-items: end;
-}
-
 .model-pricing {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
   margin: 0;
   color: var(--color-muted);
   font-family: var(--font-mono);
@@ -353,51 +305,72 @@ h3 {
 .input-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
   padding: 8px;
   border-bottom: 1px solid var(--color-primary);
   background: var(--color-background);
 }
 
+.model-compact {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr);
+  flex: 1 1 330px;
+  max-width: 100%;
+}
+
+.model-compact select {
+  min-height: 36px;
+  padding: 0 10px;
+  border-color: var(--color-border);
+  font-size: 12px;
+}
+
+.model-compact-label,
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  clip: rect(0 0 0 0);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .patch-layer-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-}
-
-.patch-label {
-  padding: 0 6px;
-  color: var(--color-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  text-transform: uppercase;
+  margin-left: auto;
 }
 
 .patch-layer-button {
+  appearance: none;
   display: inline-grid;
   min-width: 38px;
   min-height: 34px;
   padding: 4px 6px;
   border: 1px solid var(--color-border);
   border-radius: 0;
-  background: var(--color-background);
+  background-color: var(--color-background);
   color: var(--color-primary);
   font-family: var(--font-mono);
   text-align: center;
-  transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.patch-layer-button:hover {
+.patch-layer-button:not([aria-pressed="true"]):hover {
   border-color: var(--color-primary);
-  background: var(--color-hover-highlight);
+  background-color: var(--color-hover-highlight);
 }
 
-.patch-layer-button[aria-pressed="true"] {
+.patch-layer-button[aria-pressed="true"],
+.patch-layer-button[aria-pressed="true"]:hover,
+.patch-layer-button[aria-pressed="true"]:active,
+.patch-layer-button[aria-pressed="true"]:focus-visible {
   border-color: var(--color-primary);
-  background: var(--color-primary);
+  background-color: var(--color-primary);
   color: var(--color-background);
 }
 
@@ -410,68 +383,21 @@ h3 {
   line-height: 1;
 }
 
+.patch-layer-icon svg,
+.patch-layer-icon path {
+  display: block;
+  fill: currentColor;
+}
+
+.patch-layer-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
 .patch-layer-delta {
   color: var(--color-muted);
   font-size: 9px;
   line-height: 1.1;
-}
-
-.patch-details {
-  margin-left: auto;
-  color: var(--color-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.patch-details summary {
-  min-height: 34px;
-  padding: 8px 8px 0;
-  cursor: pointer;
-  list-style-position: inside;
-}
-
-.patch-preview {
-  position: absolute;
-  z-index: 2;
-  right: 0;
-  width: min(560px, 100%);
-  margin-top: 8px;
-  border: 1px solid var(--color-primary);
-  border-radius: 0;
-  background: var(--color-code-block);
-  color: var(--color-dark-primary);
-  overflow: hidden;
-}
-
-.patch-preview pre {
-  max-height: 180px;
-  margin: 0;
-  padding: 12px;
-  overflow: auto;
-  color: var(--color-hover-highlight);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-}
-
-.patch-empty {
-  margin: 0;
-  padding: 12px;
-  color: var(--color-dark-muted);
-}
-
-.text-button {
-  min-height: 0;
-  padding: 0 6px;
-  border: 0;
-  background: transparent;
-  color: var(--color-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  text-decoration: underline;
-  text-transform: uppercase;
 }
 
 .text-surface {
@@ -703,6 +629,38 @@ select {
   color: var(--color-dark-primary);
 }
 
+.references {
+  margin-top: var(--space-section);
+  padding: var(--space-section) 0 0;
+  border-top: 1px solid var(--color-primary);
+}
+
+.references h2 {
+  margin-bottom: 18px;
+}
+
+.references ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.references a {
+  color: var(--color-accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.references a:hover {
+  background: var(--color-hover-highlight);
+  color: var(--color-primary);
+}
+
 @media (max-width: 900px) {
   .app-shell {
     padding-right: var(--space-tablet);
@@ -721,6 +679,7 @@ select {
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
 
 @media (max-width: 620px) {
   .app-shell {
@@ -751,14 +710,6 @@ select {
     gap: 12px;
   }
 
-  .model-family-toggle {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .model-picker-row {
-    grid-template-columns: 1fr;
-  }
-
   .model-pricing {
     justify-content: flex-start;
   }
@@ -782,21 +733,17 @@ select {
     padding: 18px;
   }
 
-  .patch-toolbar {
-    gap: 4px;
-  }
-
   .input-toolbar {
     gap: 4px;
   }
 
-  .patch-details {
-    width: 100%;
-    margin-left: 0;
+  .model-compact {
+    flex-basis: 100%;
   }
 
-  .patch-details summary {
-    padding-left: 0;
+  .patch-layer-grid {
+    width: 100%;
+    margin-left: 0;
   }
 
 }

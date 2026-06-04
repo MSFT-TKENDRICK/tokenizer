@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   AI_CREDIT_USD_VALUE,
+  AUTO_MODEL_DISCOUNT,
+  COPILOT_MODEL_OPTIONS,
   COPILOT_MODELS,
   estimateInputAiCredits,
   estimateInputUsd,
@@ -12,6 +14,7 @@ import {
 describe("Copilot model pricing", () => {
   it("uses the GitHub AI Credits conversion from Copilot billing docs", () => {
     expect(AI_CREDIT_USD_VALUE).toBe(0.01);
+    expect(AUTO_MODEL_DISCOUNT).toBe(0.1);
     expect(usdToAiCredits(1)).toBe(100);
   });
 
@@ -52,6 +55,12 @@ describe("Copilot model pricing", () => {
     const gpt54 = model("gpt-5.4");
     expect(estimateInputAiCredits(2_000, gpt54)).toBe(0.5);
     expect(inputAiCreditsPerMillionTokens(gpt54)).toBe(250);
+
+    const auto = COPILOT_MODEL_OPTIONS[0];
+    expect(auto.id).toBe("auto");
+    expect(estimateInputUsd(2_000, auto)).toBeCloseTo(0.009);
+    expect(estimateInputAiCredits(2_000, auto)).toBeCloseTo(0.9);
+    expect(inputAiCreditsPerMillionTokens(auto)).toBe(450);
   });
 
   it("keeps legacy request multipliers separate from usage-based AI credit pricing", () => {
@@ -59,6 +68,12 @@ describe("Copilot model pricing", () => {
     expect(model("claude-opus-4.5").legacyPremiumRequestMultiplier).toBe(15);
     expect(model("claude-opus-4.8").legacyPremiumRequestMultiplier).toBe(27);
     expect(model("claude-sonnet-4").legacyPremiumRequestMultiplier).toBeUndefined();
+    expect(COPILOT_MODEL_OPTIONS[0].legacyPremiumRequestMultiplier).toBeCloseTo(51.3);
+  });
+
+  it("keeps Auto as a single virtual model option outside provider groups", () => {
+    expect(COPILOT_MODEL_OPTIONS.filter((candidate) => candidate.id === "auto")).toHaveLength(1);
+    expect(COPILOT_MODELS.some((candidate) => candidate.id === "auto")).toBe(false);
   });
 });
 
