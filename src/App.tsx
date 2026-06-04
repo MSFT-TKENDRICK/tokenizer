@@ -6,6 +6,9 @@ import {
 } from "./lib/tokenizer";
 import {
   COPILOT_MODEL_FAMILIES,
+  estimateInputAiCredits,
+  estimateInputUsd,
+  inputAiCreditsPerMillionTokens,
   modelsForFamily,
   type CopilotModelFamilyId,
 } from "./lib/copilotModels";
@@ -16,6 +19,23 @@ type ViewMode = "plain" | "tokens" | "ids";
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: value < 0.01 ? 4 : 2,
+    minimumFractionDigits: value > 0 && value < 0.01 ? 4 : 0,
+    style: "currency",
+    currency: "USD",
+  }).format(value);
+}
+
+function formatAiCredits(value: number) {
+  const maximumFractionDigits = value >= 10 ? 1 : value >= 1 ? 2 : 4;
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits,
+    minimumFractionDigits: value > 0 && value < 0.0001 ? 6 : 0,
+  }).format(value);
 }
 
 function visibleTokenText(token: Token) {
@@ -82,7 +102,9 @@ export default function App() {
   const displayedTokens = tokens.slice(0, 500);
   const contextPercent = summary.model?.contextPercentage ?? 0;
   const remainingContext = Math.max(selectedModel.contextWindow - summary.tokens, 0);
-  const estimatedInputCost = (summary.tokens / 1_000_000) * selectedModel.pricing.inputPerMillionTokensUsd;
+  const estimatedInputCost = estimateInputUsd(summary.tokens, selectedModel);
+  const estimatedInputAiCredits = estimateInputAiCredits(summary.tokens, selectedModel);
+  const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
 
   function applyLayers(nextLayerIds: string[]) {
     setSelectedLayerIds(nextLayerIds);
@@ -180,6 +202,10 @@ export default function App() {
                   <dd>${formatNumber(selectedModel.pricing.inputPerMillionTokensUsd)}/1M</dd>
                 </div>
                 <div>
+                  <dt>credits</dt>
+                  <dd>{formatAiCredits(inputAiCreditRate)}/1M</dd>
+                </div>
+                <div>
                   <dt>output</dt>
                   <dd>${formatNumber(selectedModel.pricing.outputPerMillionTokensUsd)}/1M</dd>
                 </div>
@@ -241,6 +267,10 @@ export default function App() {
               <div data-metric="bytes">
                 <dd>{formatNumber(summary.bytes)}</dd>
                 <dt>bytes</dt>
+              </div>
+              <div data-metric="ai-credits">
+                <dd>{formatAiCredits(estimatedInputAiCredits)}</dd>
+                <dt>AI credits</dt>
               </div>
             </dl>
           </div>
@@ -342,7 +372,7 @@ export default function App() {
 
           <div className="controls-row">
             <p className="cost-note">
-              Estimated input usage: ${formatNumber(estimatedInputCost)} at current Copilot usage-based pricing.
+              Estimated prompt input: {formatAiCredits(estimatedInputAiCredits)} AI credits ({formatCurrency(estimatedInputCost)}) at current Copilot usage-based pricing.
             </p>
           </div>
 
@@ -363,7 +393,7 @@ export default function App() {
           </div>
 
           <p className="help-text">
-            Counts are deterministic in this app and intended for planning. Production model tokenizers may differ by provider and model version.
+            Counts and input AI credits are deterministic in this app and intended for planning. Production tokenizers, output tokens, and cached-token billing may differ by provider, model version, and interaction.
           </p>
         </aside>
       </section>

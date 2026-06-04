@@ -30,10 +30,12 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByRole("tab", { name: "Plaintext" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Prompt metrics")).toContainText(/\d+tokens/);
+  await expect(page.getByLabel("Prompt metrics")).toContainText("AI credits");
   await expect(page.getByLabel("GitHub Copilot model selector")).toBeVisible();
   await expect(page.getByRole("tab", { name: "OpenAI" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("gpt-5.5");
   await expect(page.getByLabel("Model pricing metadata")).toContainText("57x");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("500/1M");
   await expect(page.getByLabel("Prompt patch diffs")).toBeVisible();
   await expect(page.getByLabel("Selected patch diff preview")).toContainText("No diffs applied.");
   await expect(page.getByLabel("Current token summary")).toHaveCount(0);
@@ -78,6 +80,7 @@ test("typing and pasting input updates counts and token visualization", async ({
   await expect(inlineMetric(page, "characters")).toHaveText("15");
   await expect(inlineMetric(page, "words")).toHaveText("2");
   await expect(inlineMetric(page, "bytes")).toHaveText("18");
+  await expect(inlineMetric(page, "ai-credits")).toHaveText("0.0035");
 
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.locator(".token-segment", { hasText: "Hello" })).toHaveAttribute(
@@ -98,6 +101,7 @@ test("Clear empties state and Reset patches restores the base prompt", async ({ 
   await expect(inlineMetric(page, "characters")).toHaveText("0");
   await expect(inlineMetric(page, "words")).toHaveText("0");
   await expect(inlineMetric(page, "bytes")).toHaveText("0");
+  await expect(inlineMetric(page, "ai-credits")).toHaveText("0");
 
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByText("Add text in Plaintext view to inspect token boundaries.")).toBeVisible();
@@ -161,13 +165,16 @@ test("model selector changes context copy and meter width", async ({ page }) => 
   await expect(page.locator(".context-label")).toContainText("GPT-5.5");
   await expect(page.locator(".context-label strong")).toHaveText("1.6%");
   await expect(page.getByText("125,999 tokens remaining in a 128,000 token window.")).toBeVisible();
-  await expect(page.getByText("Estimated input usage: $0 at current Copilot usage-based pricing.")).toBeVisible();
+  await expect(inlineMetric(page, "ai-credits")).toHaveText("1");
+  await expect(page.getByText("Estimated prompt input: 1 AI credits ($0.01) at current Copilot usage-based pricing.")).toBeVisible();
 
   await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption({ label: "GPT-5.4 · 272,000 tokens" });
   await expect(page.locator(".context-label")).toContainText("GPT-5.4");
   await expect(page.locator(".context-label strong")).toHaveText("0.7%");
   await expect(page.getByText("269,999 tokens remaining in a 272,000 token window.")).toBeVisible();
   await expect(page.getByLabel("Model pricing metadata")).toContainText("$2.5/1M");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("250/1M");
+  await expect(inlineMetric(page, "ai-credits")).toHaveText("0.5003");
 
   const largerContextWidth = await meter.evaluate((element) => getComputedStyle(element).width);
   expect(parseFloat(largerContextWidth)).toBeLessThan(parseFloat(initialWidth));

@@ -30,8 +30,12 @@ export const COPILOT_MODEL_FAMILIES: readonly CopilotModelFamily[] = [
   { id: "github-microsoft", label: "GitHub + Microsoft" },
 ];
 
+export const AI_CREDIT_USD_VALUE = 0.01;
+
 // Internal pricing documentation:
-// - Current usage-based prices are from GitHub Docs, "Models and pricing for GitHub Copilot".
+// - Current usage-based prices are from GitHub Docs, "Models and pricing for GitHub Copilot":
+//   https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
+// - GitHub Docs define 1 AI credit = $0.01 USD; prices below are per 1 million tokens.
 // - Legacy premium request multipliers are from GitHub Docs, "Model multipliers for annual plans on request-based billing (legacy)".
 // - Multipliers apply only to legacy annual Copilot Pro/Pro+ request-based billing; current billing uses per-token AI credits.
 // - Context windows here are planning estimates for tokenizer visualization, using published pricing tiers where available.
@@ -158,6 +162,37 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     legacyPremiumRequestMultiplier: 9,
   },
   {
+    id: "claude-sonnet-4.5",
+    name: "Claude Sonnet 4.5",
+    familyId: "anthropic",
+    provider: "Anthropic",
+    category: "Versatile",
+    releaseStatus: "GA",
+    contextWindow: 200_000,
+    pricing: {
+      inputPerMillionTokensUsd: 3,
+      cachedInputPerMillionTokensUsd: 0.3,
+      cacheWritePerMillionTokensUsd: 3.75,
+      outputPerMillionTokensUsd: 15,
+    },
+    legacyPremiumRequestMultiplier: 6,
+  },
+  {
+    id: "claude-sonnet-4",
+    name: "Claude Sonnet 4",
+    familyId: "anthropic",
+    provider: "Anthropic",
+    category: "Versatile",
+    releaseStatus: "GA",
+    contextWindow: 200_000,
+    pricing: {
+      inputPerMillionTokensUsd: 3,
+      cachedInputPerMillionTokensUsd: 0.3,
+      cacheWritePerMillionTokensUsd: 3.75,
+      outputPerMillionTokensUsd: 15,
+    },
+  },
+  {
     id: "claude-opus-4.8",
     name: "Claude Opus 4.8",
     familyId: "anthropic",
@@ -172,6 +207,54 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
       outputPerMillionTokensUsd: 25,
     },
     legacyPremiumRequestMultiplier: 27,
+  },
+  {
+    id: "claude-opus-4.7",
+    name: "Claude Opus 4.7",
+    familyId: "anthropic",
+    provider: "Anthropic",
+    category: "Powerful",
+    releaseStatus: "GA",
+    contextWindow: 200_000,
+    pricing: {
+      inputPerMillionTokensUsd: 5,
+      cachedInputPerMillionTokensUsd: 0.5,
+      cacheWritePerMillionTokensUsd: 6.25,
+      outputPerMillionTokensUsd: 25,
+    },
+    legacyPremiumRequestMultiplier: 27,
+  },
+  {
+    id: "claude-opus-4.6",
+    name: "Claude Opus 4.6",
+    familyId: "anthropic",
+    provider: "Anthropic",
+    category: "Powerful",
+    releaseStatus: "GA",
+    contextWindow: 200_000,
+    pricing: {
+      inputPerMillionTokensUsd: 5,
+      cachedInputPerMillionTokensUsd: 0.5,
+      cacheWritePerMillionTokensUsd: 6.25,
+      outputPerMillionTokensUsd: 25,
+    },
+    legacyPremiumRequestMultiplier: 27,
+  },
+  {
+    id: "claude-opus-4.5",
+    name: "Claude Opus 4.5",
+    familyId: "anthropic",
+    provider: "Anthropic",
+    category: "Powerful",
+    releaseStatus: "GA",
+    contextWindow: 200_000,
+    pricing: {
+      inputPerMillionTokensUsd: 5,
+      cachedInputPerMillionTokensUsd: 0.5,
+      cacheWritePerMillionTokensUsd: 6.25,
+      outputPerMillionTokensUsd: 25,
+    },
+    legacyPremiumRequestMultiplier: 15,
   },
   {
     id: "gemini-2.5-pro",
@@ -248,4 +331,24 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
 
 export function modelsForFamily(familyId: CopilotModelFamilyId) {
   return COPILOT_MODELS.filter((model) => model.familyId === familyId);
+}
+
+export function usdToAiCredits(usd: number) {
+  return usd / AI_CREDIT_USD_VALUE;
+}
+
+export function aiCreditsToUsd(aiCredits: number) {
+  return aiCredits * AI_CREDIT_USD_VALUE;
+}
+
+export function inputAiCreditsPerMillionTokens(model: CopilotModel) {
+  return usdToAiCredits(model.pricing.inputPerMillionTokensUsd);
+}
+
+export function estimateInputUsd(tokenCount: number, model: CopilotModel) {
+  return (tokenCount / 1_000_000) * model.pricing.inputPerMillionTokensUsd;
+}
+
+export function estimateInputAiCredits(tokenCount: number, model: CopilotModel) {
+  return usdToAiCredits(estimateInputUsd(tokenCount, model));
 }
