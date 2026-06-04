@@ -30,8 +30,9 @@ test.afterEach(async ({ page }, testInfo) => {
 test("renders the tokenizer workspace with the default plaintext view", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Plaintext" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(productNote);
-  await expect(page.getByLabel("Current token summary")).toContainText(/\d+/);
-  await expect(page.getByText(/\d+ shown/)).toBeVisible();
+  await expect(page.getByLabel("Current token count")).toHaveText(/\d+ tokens/);
+  await expect(page.getByLabel("Current token summary")).toHaveCount(0);
+  await expect(page.locator("dt", { hasText: /^Tokens$/ })).toHaveCount(0);
 });
 
 test("toggles one shared viewport between plaintext, tokens, and token IDs", async ({ page }) => {
@@ -69,12 +70,10 @@ test("typing and pasting input updates counts and token visualization", async ({
   await page.keyboard.insertText("world! 🚀");
 
   await expect(textarea).toHaveValue("Hello, world! 🚀");
-  await expect(metric(page, "Tokens")).toHaveText("7");
   await expect(metric(page, "Characters")).toHaveText("15");
   await expect(metric(page, "Words")).toHaveText("2");
   await expect(metric(page, "Bytes")).toHaveText("18");
-  await expect(page.getByLabel("Current token summary")).toContainText("7");
-  await expect(page.getByText("7 shown")).toBeVisible();
+  await expect(page.getByLabel("Current token count")).toHaveText("7 tokens");
 
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.locator(".token-segment", { hasText: "Hello" })).toHaveAttribute(
@@ -89,13 +88,12 @@ test("typing and pasting input updates counts and token visualization", async ({
 
 test("Clear empties state and Reset example restores the default text", async ({ page }) => {
   await page.getByRole("button", { name: "Clear" }).click();
-
   await expect(page.getByLabel("Plaintext editor")).toHaveValue("");
-  await expect(metric(page, "Tokens")).toHaveText("0");
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue("");
   await expect(metric(page, "Characters")).toHaveText("0");
   await expect(metric(page, "Words")).toHaveText("0");
   await expect(metric(page, "Bytes")).toHaveText("0");
-  await expect(page.getByText("0 shown")).toBeVisible();
+  await expect(page.getByLabel("Current token count")).toHaveText("0 tokens");
 
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByText("Add text in Plaintext view to inspect token boundaries.")).toBeVisible();
@@ -127,7 +125,7 @@ test("example buttons load distinct examples", async ({ page }) => {
 test("model selector changes context copy and meter width", async ({ page }) => {
   const longPrompt = `${"token ".repeat(1_000)}done`;
   await page.getByLabel("Plaintext editor").fill(longPrompt);
-  await expect(metric(page, "Tokens")).toHaveText("2,001");
+  await expect(page.getByLabel("Current token count")).toHaveText("2,001 tokens");
 
   const meter = page.locator(".meter span");
   const initialWidth = await meter.evaluate((element) => getComputedStyle(element).width);

@@ -62,10 +62,6 @@ export default function App() {
             Paste text to inspect an approximate token breakdown, readable usage counts, and how much of a selected context window your prompt may consume.
           </p>
         </div>
-        <div className="hero-card" aria-label="Current token summary">
-          <span>{summary.tokens}</span>
-          <small>tokens estimated</small>
-        </div>
       </section>
 
       <section className="workspace">
@@ -75,37 +71,41 @@ export default function App() {
               <p className="eyebrow">Workspace</p>
               <h2>Text, tokens, and token IDs</h2>
             </div>
-            <span className="chip-count">{formatNumber(displayedTokens.length)} shown</span>
           </div>
 
-          <div className="view-toggle" role="tablist" aria-label="Tokenizer view mode">
-            <button
-              aria-selected={viewMode === "plain"}
-              className={viewMode === "plain" ? "active" : ""}
-              role="tab"
-              type="button"
-              onClick={() => setViewMode("plain")}
-            >
-              Plaintext
-            </button>
-            <button
-              aria-selected={viewMode === "tokens"}
-              className={viewMode === "tokens" ? "active" : ""}
-              role="tab"
-              type="button"
-              onClick={() => setViewMode("tokens")}
-            >
-              Tokens
-            </button>
-            <button
-              aria-selected={viewMode === "ids"}
-              className={viewMode === "ids" ? "active" : ""}
-              role="tab"
-              type="button"
-              onClick={() => setViewMode("ids")}
-            >
-              Token IDs
-            </button>
+          <div className="view-bar">
+            <div className="view-toggle" role="tablist" aria-label="Tokenizer view mode">
+              <button
+                aria-selected={viewMode === "plain"}
+                className={viewMode === "plain" ? "active" : ""}
+                role="tab"
+                type="button"
+                onClick={() => setViewMode("plain")}
+              >
+                Plaintext
+              </button>
+              <button
+                aria-selected={viewMode === "tokens"}
+                className={viewMode === "tokens" ? "active" : ""}
+                role="tab"
+                type="button"
+                onClick={() => setViewMode("tokens")}
+              >
+                Tokens
+              </button>
+              <button
+                aria-selected={viewMode === "ids"}
+                className={viewMode === "ids" ? "active" : ""}
+                role="tab"
+                type="button"
+                onClick={() => setViewMode("ids")}
+              >
+                Token IDs
+              </button>
+            </div>
+            <span className="token-count" aria-label="Current token count">
+              {formatNumber(summary.tokens)} tokens
+            </span>
           </div>
 
           <div className="text-surface">
@@ -191,7 +191,6 @@ export default function App() {
           </div>
 
           <dl className="stats-grid">
-            <div><dt>Tokens</dt><dd>{formatNumber(summary.tokens)}</dd></div>
             <div><dt>Characters</dt><dd>{formatNumber(summary.characters)}</dd></div>
             <div><dt>Words</dt><dd>{formatNumber(summary.words)}</dd></div>
             <div><dt>Bytes</dt><dd>{formatNumber(summary.bytes)}</dd></div>
