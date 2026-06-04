@@ -36,6 +36,8 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByLabel("Chat message input")).toHaveValue(
     "Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.",
   );
+  await expect(page.getByLabel("Chat message input")).toBeFocused();
+  await expect(page.getByRole("button", { name: "Submit user message" })).toBeVisible();
   await expect(page.getByLabel("Chat message token and credit impact")).toContainText("tokens");
   await expect(page.getByLabel("Chat message token and credit impact")).toContainText("AI credits");
   await expect(page.getByLabel("GitHub Copilot model selector")).toBeVisible();
@@ -106,6 +108,9 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(chatImpactMetric(page, "tokens")).toHaveText("7");
   await expect(chatImpactMetric(page, "AI credits")).toHaveText("0.0032");
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeLessThan(baseTokens);
+  await page.getByRole("button", { name: "Submit user message" }).click();
+  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<userRequest>" })).toBeInViewport();
+  await expect(chatInput).toBeFocused();
 
   await page.getByRole("button", { name: /Workspace context/ }).click();
   await expect(textarea).toHaveValue(composePrompt(["workspace"], "Hello, world! 🚀"));

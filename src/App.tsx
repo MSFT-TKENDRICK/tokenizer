@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   summarizeTokens,
   tokenize,
@@ -157,6 +157,7 @@ function PatchLayerIcon({ icon }: { icon: string }) {
 
 export default function App() {
   const plainEditorRef = useRef<HTMLTextAreaElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [userMessage, setUserMessage] = useState(defaultUserRequest);
   const [selectedModelId, setSelectedModelId] = useState("auto");
@@ -177,6 +178,10 @@ export default function App() {
   const estimatedUserMessageCost = estimateInputUsd(userMessageTokens.length, selectedModel);
   const estimatedUserMessageAiCredits = estimateInputAiCredits(userMessageTokens.length, selectedModel);
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
+
+  useEffect(() => {
+    chatInputRef.current?.focus({ preventScroll: true });
+  }, []);
 
   function scrollPlainEditorTo(textValue: string, marker?: string) {
     const markerIndex = marker ? textValue.indexOf(marker) : -1;
@@ -230,6 +235,13 @@ export default function App() {
     setUserMessage(value);
     setViewMode("plain");
     scrollPlainEditorTo(composePrompt(selectedLayerIds, value), "<userRequest>");
+  }
+
+  function submitUserMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setViewMode("plain");
+    scrollPlainEditorTo(text, "<userRequest>");
+    chatInputRef.current?.focus({ preventScroll: true });
   }
 
   function marginalTokenDelta(layerId: string) {
@@ -437,11 +449,12 @@ export default function App() {
                 )}
               </div>
             )}
-            <div className="chat-composer" aria-label="Chat message composer">
+            <form className="chat-composer" aria-label="Chat message composer" onSubmit={submitUserMessage}>
               <label className="chat-composer-label" htmlFor="chat-message">
                 User message
               </label>
               <textarea
+                ref={chatInputRef}
                 id="chat-message"
                 className="chat-input"
                 value={userMessage}
@@ -451,6 +464,9 @@ export default function App() {
                 rows={2}
                 spellCheck="true"
               />
+              <button className="chat-submit" type="submit" aria-label="Submit user message">
+                Submit
+              </button>
               <dl className="chat-impact" aria-label="Chat message token and credit impact">
                 <div>
                   <dd>{formatNumber(userMessageTokens.length)}</dd>
@@ -465,7 +481,7 @@ export default function App() {
                   <dt>input</dt>
                 </div>
               </dl>
-            </div>
+            </form>
           </div>
 
           <div className="editor-actions">

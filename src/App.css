@@ -437,8 +437,8 @@ h3 {
 .chat-composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 14px;
-  align-items: end;
+  gap: 8px 12px;
+  align-items: start;
   padding: 10px;
   border-top: 1px solid var(--color-primary);
   background: var(--color-background);
@@ -452,8 +452,8 @@ h3 {
 }
 
 .chat-input {
-  min-height: 68px;
-  max-height: 120px;
+  min-height: 92px;
+  max-height: 140px;
   padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: 0;
@@ -469,15 +469,34 @@ h3 {
   color: var(--color-muted);
 }
 
+.chat-submit {
+  min-width: 88px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 0;
+  background: var(--color-primary);
+  color: var(--color-background);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.chat-submit:hover {
+  opacity: 0.72;
+}
+
 .chat-impact {
-  display: grid;
-  grid-template-columns: repeat(3, max-content);
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
   gap: 8px 12px;
   margin: 0;
   color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.25;
+  justify-content: flex-end;
   text-align: right;
   text-transform: uppercase;
 }
@@ -864,13 +883,16 @@ select {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .chat-impact {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    text-align: left;
+  .chat-submit {
+    width: 100%;
+    min-height: 44px;
   }
 
-  .chat-input {
-    min-height: 92px;
+  .chat-impact {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+    text-align: left;
   }
 
 }
