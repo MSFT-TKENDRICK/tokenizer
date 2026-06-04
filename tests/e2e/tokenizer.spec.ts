@@ -33,6 +33,11 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Prompt metrics")).toContainText(/\d+tokens/);
   await expect(page.getByLabel("Prompt metrics")).toContainText("AI credits");
+  await expect(page.getByLabel("Chat message input")).toHaveValue(
+    "Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.",
+  );
+  await expect(page.getByLabel("Chat message token and credit impact")).toContainText("tokens");
+  await expect(page.getByLabel("Chat message token and credit impact")).toContainText("AI credits");
   await expect(page.getByLabel("GitHub Copilot model selector")).toBeVisible();
   await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("auto");
   await expect(page.getByLabel("Model pricing metadata")).toContainText("450/1M");
@@ -81,8 +86,9 @@ test("toggles one shared viewport between plaintext, tokens, and token IDs", asy
   await expect(page.getByLabel("Plaintext editor")).toBeVisible();
 });
 
-test("plaintext prompt is read-only and context controls update counts", async ({ page }) => {
+test("plaintext prompt is read-only and chat composer updates counts", async ({ page }) => {
   const textarea = page.getByLabel("Plaintext editor");
+  const chatInput = page.getByLabel("Chat message input");
   const initialPrompt = await textarea.inputValue();
   const baseTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
 
@@ -95,9 +101,17 @@ test("plaintext prompt is read-only and context controls update counts", async (
   await expect(textarea).toHaveValue(initialPrompt);
   await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
 
+  await chatInput.fill("Hello, world! 🚀");
+  await expect(textarea).toHaveValue(composePrompt([], "Hello, world! 🚀"));
+  await expect(chatImpactMetric(page, "tokens")).toHaveText("7");
+  await expect(chatImpactMetric(page, "AI credits")).toHaveText("0.0032");
+  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeLessThan(baseTokens);
+
   await page.getByRole("button", { name: /Workspace context/ }).click();
-  await expect(textarea).toHaveValue(composePrompt(["workspace"]));
-  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(baseTokens);
+  await expect(textarea).toHaveValue(composePrompt(["workspace"], "Hello, world! 🚀"));
+  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(
+    Number((await chatImpactMetric(page, "tokens").textContent())?.replace(/,/g, "")),
+  );
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toContainText("workspace_info");
 });
@@ -115,22 +129,23 @@ test("XML syntax highlighting preserves readonly closing tags while scrolling", 
   await expect(page.locator(".plaintext-highlight")).toContainText("</userRequest>");
 });
 
-test("Clear empties state and Restore sample restores the base prompt", async ({ page }) => {
+test("Clear empties chat input and Restore sample restores the base prompt", async ({ page }) => {
   await page.getByRole("button", { name: "Clear" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue("");
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue("");
-  await expect(inlineMetric(page, "tokens")).toHaveText("0");
-  await expect(inlineMetric(page, "characters")).toHaveText("0");
-  await expect(inlineMetric(page, "words")).toHaveText("0");
-  await expect(inlineMetric(page, "bytes")).toHaveText("0");
-  await expect(inlineMetric(page, "ai-credits")).toHaveText("0");
+  await expect(page.getByLabel("Chat message input")).toHaveValue("");
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], ""));
+  await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
+  await expect(chatImpactMetric(page, "AI credits")).toHaveText("0");
+  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(0);
 
   await page.getByRole("tab", { name: "Tokens" }).click();
-  await expect(page.getByText("Add text in Plaintext view to inspect token boundaries.")).toBeVisible();
+  await expect(page.getByLabel("Token text view")).toContainText("userRequest");
 
   await page.getByRole("button", { name: "Restore sample" }).click();
   await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
+  await expect(page.getByLabel("Chat message input")).toHaveValue(
+    "Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.",
+  );
 });
 
 test("context layer buttons apply and remove prompt diffs", async ({ page }) => {
@@ -229,6 +244,10 @@ test("mobile viewport keeps visible features usable", async ({ page }) => {
 
 function inlineMetric(page: Page, label: string) {
   return page.locator(`[data-metric="${label}"] dd`);
+}
+
+function chatImpactMetric(page: Page, label: string) {
+  return page.getByLabel("Chat message token and credit impact").locator("div", { hasText: label }).locator("dd");
 }
 
 function formatMetric(value: number) {

@@ -434,6 +434,71 @@ h3 {
   color: transparent;
 }
 
+.chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  align-items: end;
+  padding: 10px;
+  border-top: 1px solid var(--color-primary);
+  background: var(--color-background);
+}
+
+.chat-composer-label {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.chat-input {
+  min-height: 68px;
+  max-height: 120px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-background);
+  color: var(--color-primary);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.chat-input::placeholder {
+  color: var(--color-muted);
+}
+
+.chat-impact {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  gap: 8px 12px;
+  margin: 0;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.25;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+.chat-impact div {
+  display: grid;
+  gap: 2px;
+}
+
+.chat-impact dt,
+.chat-impact dd {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.chat-impact dd {
+  color: var(--color-primary);
+  font-size: 12px;
+}
+
 .plaintext-highlight {
   position: absolute;
   inset: 0;
@@ -477,7 +542,8 @@ h3 {
 .text-viewport:focus,
 .text-surface:focus-within,
 select:focus,
-button:focus-visible {
+button:focus-visible,
+.chat-input:focus {
   border-color: var(--color-accent);
   outline: 2px solid var(--color-accent);
   outline-offset: 3px;
@@ -792,6 +858,19 @@ select {
     grid-row: auto;
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .chat-composer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-impact {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    text-align: left;
+  }
+
+  .chat-input {
+    min-height: 92px;
   }
 
 }

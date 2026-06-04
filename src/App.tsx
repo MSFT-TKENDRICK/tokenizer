@@ -13,7 +13,7 @@ import {
   modelById,
   type CopilotModelFamilyId,
 } from "./lib/copilotModels";
-import { composePrompt, createPatchDiff, promptPatchLayers } from "./lib/examples";
+import { composePrompt, createPatchDiff, defaultUserRequest, promptPatchLayers } from "./lib/examples";
 import "./App.css";
 
 type ViewMode = "plain" | "tokens" | "ids";
@@ -158,20 +158,24 @@ function PatchLayerIcon({ icon }: { icon: string }) {
 export default function App() {
   const plainEditorRef = useRef<HTMLTextAreaElement>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
-  const [text, setText] = useState(composePrompt([]));
+  const [userMessage, setUserMessage] = useState(defaultUserRequest);
   const [selectedModelId, setSelectedModelId] = useState("auto");
   const [viewMode, setViewMode] = useState<ViewMode>("plain");
   const [plainScrollTop, setPlainScrollTop] = useState(0);
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
   const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
+  const text = useMemo(() => composePrompt(selectedLayerIds, userMessage), [selectedLayerIds, userMessage]);
   const tokens = useMemo(() => tokenize(text), [text]);
+  const userMessageTokens = useMemo(() => tokenize(userMessage), [userMessage]);
   const summary = useMemo(() => summarizeTokens(text, tokens, selectedModel), [text, tokens, selectedModel]);
   const displayedTokens = tokens.slice(0, 500);
   const contextPercent = summary.model?.contextPercentage ?? 0;
   const remainingContext = Math.max(selectedModel.contextWindow - summary.tokens, 0);
   const estimatedInputCost = estimateInputUsd(summary.tokens, selectedModel);
   const estimatedInputAiCredits = estimateInputAiCredits(summary.tokens, selectedModel);
+  const estimatedUserMessageCost = estimateInputUsd(userMessageTokens.length, selectedModel);
+  const estimatedUserMessageAiCredits = estimateInputAiCredits(userMessageTokens.length, selectedModel);
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
 
   function scrollPlainEditorTo(textValue: string, marker?: string) {
@@ -190,9 +194,8 @@ export default function App() {
   }
 
   function applyLayers(nextLayerIds: string[], focusMarker?: string) {
-    const nextText = composePrompt(nextLayerIds);
+    const nextText = composePrompt(nextLayerIds, userMessage);
     setSelectedLayerIds(nextLayerIds);
-    setText(nextText);
     setViewMode("plain");
     scrollPlainEditorTo(nextText, focusMarker);
   }
@@ -208,14 +211,25 @@ export default function App() {
   }
 
   function resetPrompt() {
-    applyLayers([]);
+    const nextText = composePrompt([], defaultUserRequest);
+    setSelectedLayerIds([]);
+    setUserMessage(defaultUserRequest);
+    setViewMode("plain");
+    scrollPlainEditorTo(nextText);
   }
 
   function clearPrompt() {
+    const nextText = composePrompt([], "");
     setSelectedLayerIds([]);
-    setText("");
+    setUserMessage("");
     setViewMode("plain");
-    scrollPlainEditorTo("");
+    scrollPlainEditorTo(nextText);
+  }
+
+  function updateUserMessage(value: string) {
+    setUserMessage(value);
+    setViewMode("plain");
+    scrollPlainEditorTo(composePrompt(selectedLayerIds, value), "<userRequest>");
   }
 
   function marginalTokenDelta(layerId: string) {
@@ -223,7 +237,7 @@ export default function App() {
       ? selectedLayerIds.filter((id) => id !== layerId)
       : [...selectedLayerIds, layerId];
 
-    return tokenize(composePrompt(nextLayerIds)).length - tokens.length;
+    return tokenize(composePrompt(nextLayerIds, userMessage)).length - tokens.length;
   }
 
   return (
@@ -423,6 +437,35 @@ export default function App() {
                 )}
               </div>
             )}
+            <div className="chat-composer" aria-label="Chat message composer">
+              <label className="chat-composer-label" htmlFor="chat-message">
+                User message
+              </label>
+              <textarea
+                id="chat-message"
+                className="chat-input"
+                value={userMessage}
+                onChange={(event) => updateUserMessage(event.target.value)}
+                placeholder="Ask Copilot or paste the user request to estimate its prompt impact..."
+                aria-label="Chat message input"
+                rows={2}
+                spellCheck="true"
+              />
+              <dl className="chat-impact" aria-label="Chat message token and credit impact">
+                <div>
+                  <dd>{formatNumber(userMessageTokens.length)}</dd>
+                  <dt>tokens</dt>
+                </div>
+                <div>
+                  <dd>{formatAiCredits(estimatedUserMessageAiCredits)}</dd>
+                  <dt>AI credits</dt>
+                </div>
+                <div>
+                  <dd>{formatCurrency(estimatedUserMessageCost)}</dd>
+                  <dt>input</dt>
+                </div>
+              </dl>
+            </div>
           </div>
 
           <div className="editor-actions">

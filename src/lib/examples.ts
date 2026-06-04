@@ -28,9 +28,7 @@ Persist until the user's request is fully resolved.
 </working_with_the_user>
 </system>`;
 
-const userRequest = `<userRequest>
-Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.
-</userRequest>`;
+export const defaultUserRequest = "Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.";
 
 export const promptPatchLayers: readonly PromptPatchLayer[] = [
   {
@@ -129,14 +127,16 @@ Choose the most appropriate agent when asked to run a subagent.
   },
 ];
 
-export function composePrompt(selectedLayerIds: readonly string[]) {
+export function composePrompt(selectedLayerIds: readonly string[], userRequest = defaultUserRequest) {
   const selected = new Set(selectedLayerIds);
   const sections = [
     baseSystem,
     ...promptPatchLayers
       .filter((layer) => selected.has(layer.id))
       .map((layer) => layer.content),
-    userRequest,
+    `<userRequest>
+${userRequest}
+</userRequest>`,
   ];
 
   return sections.join("\n\n");
