@@ -12,13 +12,10 @@ const scenarios = [
       await page.goto(baseURL);
       await page.getByRole("button", { name: /Workspace/ }).click();
       await page.getByRole("button", { name: /AGENTS.md/ }).click();
-      await page.getByRole("button", { name: /1 skill/ }).click();
-      await page.getByRole("button", { name: /1 MCP tool/ }).click();
+      await page.getByRole("button", { name: /Tools/ }).click();
       await page.getByRole("button", { name: /Custom agent/ }).click();
+      await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption({ label: "GPT-5.4 · 272,000 tokens" });
       await page.getByRole("tab", { name: "Tokens" }).click();
-      await page.getByLabel("Model context").selectOption({
-        label: "Small context (8K) · 8,192 tokens",
-      });
     },
   },
   {
@@ -35,7 +32,7 @@ const scenarios = [
     viewport: { width: 390, height: 844 },
     run: async (page) => {
       await page.goto(baseURL);
-      await page.getByRole("button", { name: /1 skill/ }).click();
+      await page.getByRole("button", { name: /Tools/ }).click();
       await page.getByRole("tab", { name: "Tokens" }).click();
     },
   },

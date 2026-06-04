@@ -30,6 +30,10 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByRole("tab", { name: "Plaintext" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Prompt metrics")).toContainText(/\d+tokens/);
+  await expect(page.getByLabel("GitHub Copilot model selector")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "OpenAI" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("gpt-5.5");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("57x");
   await expect(page.getByLabel("Prompt patch diffs")).toBeVisible();
   await expect(page.getByLabel("Selected patch diff preview")).toContainText("No diffs applied.");
   await expect(page.getByLabel("Current token summary")).toHaveCount(0);
@@ -105,7 +109,7 @@ test("Clear empties state and Reset patches restores the base prompt", async ({ 
 
 test("patch layer buttons apply and remove prompt diffs", async ({ page }) => {
   const workspaceButton = page.getByRole("button", { name: /Workspace/ });
-  const skillButton = page.getByRole("button", { name: /1 skill/ });
+  const toolsButton = page.getByRole("button", { name: /Tools/ });
   const editor = page.getByLabel("Plaintext editor");
   const baseTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
 
@@ -117,13 +121,14 @@ test("patch layer buttons apply and remove prompt diffs", async ({ page }) => {
   await expect(page.getByLabel("Selected patch diff preview")).toContainText("+<workspace_info>");
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(baseTokens);
 
-  await skillButton.click();
-  await expect(editor).toHaveValue(composePrompt(["workspace", "one-skill"]));
+  await toolsButton.click();
+  await expect(editor).toHaveValue(composePrompt(["workspace", "tools"]));
   await expect(page.getByLabel("Selected patch diff preview")).toContainText("+<name>web-design-reviewer</name>");
+  await expect(page.getByLabel("Selected patch diff preview")).toContainText("+<instruction forToolsWithPrefix=\"mcp_github\">");
 
   await workspaceButton.click();
   await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
-  await expect(editor).toHaveValue(composePrompt(["one-skill"]));
+  await expect(editor).toHaveValue(composePrompt(["tools"]));
   await expect(editor).not.toHaveValue(/workspace_info/);
 });
 
@@ -132,8 +137,7 @@ test("patch layers isolate canonical Copilot context sources", async ({ page }) 
     ["Workspace", "workspace_info"],
     ["AGENTS.md", "AGENTS.md"],
     ["Repo instructions", ".github/copilot-instructions.md"],
-    ["1 skill", "web-design-reviewer"],
-    ["1 MCP tool", "mcp_github"],
+    ["Tools", "mcp_github"],
     ["Custom agent", "SecurityReviewer"],
     ["Terminal", "Terminals:"],
   ] as const;
@@ -154,19 +158,24 @@ test("model selector changes context copy and meter width", async ({ page }) => 
   const meter = page.locator(".meter span");
   const initialWidth = await meter.evaluate((element) => getComputedStyle(element).width);
 
-  await page.getByLabel("Model context").selectOption({ label: "No context limit" });
-  await expect(page.locator(".context-label")).toContainText("No context limit");
-  await expect(page.locator(".context-label strong")).toHaveText("—");
-  await expect(page.getByText("Choose a context size to estimate prompt window usage.")).toBeVisible();
-  await expect(meter).toHaveAttribute("style", "width: 0%;");
+  await expect(page.locator(".context-label")).toContainText("GPT-5.5");
+  await expect(page.locator(".context-label strong")).toHaveText("1.6%");
+  await expect(page.getByText("125,999 tokens remaining in a 128,000 token window.")).toBeVisible();
+  await expect(page.getByText("Estimated input usage: $0 at current Copilot usage-based pricing.")).toBeVisible();
 
-  await page.getByLabel("Model context").selectOption({ label: "Small context (8K) · 8,192 tokens" });
-  await expect(page.locator(".context-label")).toContainText("Small context (8K)");
-  await expect(page.locator(".context-label strong")).toHaveText("24.4%");
-  await expect(page.getByText("6,191 tokens remaining in a 8,192 token window.")).toBeVisible();
+  await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption({ label: "GPT-5.4 · 272,000 tokens" });
+  await expect(page.locator(".context-label")).toContainText("GPT-5.4");
+  await expect(page.locator(".context-label strong")).toHaveText("0.7%");
+  await expect(page.getByText("269,999 tokens remaining in a 272,000 token window.")).toBeVisible();
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("$2.5/1M");
 
-  const smallWidth = await meter.evaluate((element) => getComputedStyle(element).width);
-  expect(parseFloat(smallWidth)).toBeGreaterThan(parseFloat(initialWidth));
+  const largerContextWidth = await meter.evaluate((element) => getComputedStyle(element).width);
+  expect(parseFloat(largerContextWidth)).toBeLessThan(parseFloat(initialWidth));
+
+  await page.getByRole("tab", { name: "Claude" }).click();
+  await expect(page.getByRole("tab", { name: "Claude" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("claude-haiku-4.5");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("0.33x");
 });
 
 test("mobile viewport keeps visible features usable", async ({ page }) => {
@@ -174,11 +183,13 @@ test("mobile viewport keeps visible features usable", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Tokenizer workspace" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "OpenAI" })).toBeVisible();
   await expect(page.getByLabel("Plaintext editor")).toBeVisible();
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Workspace/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Workspace patch/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Workspace patch/ }).locator("svg")).toBeVisible();
   await expect(page.getByRole("button", { name: "Reset patches" })).toBeVisible();
   await expect(page.getByLabel("Tokenizer statistics")).toBeVisible();
   await expect(page.locator(".token-segment").first()).toBeVisible();
