@@ -167,25 +167,29 @@ export default function App() {
   const plainEditorRef = useRef<HTMLTextAreaElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
-  const [userMessage, setUserMessage] = useState(defaultUserRequest);
+  const [draftUserMessage, setDraftUserMessage] = useState(defaultUserRequest);
+  const [submittedUserMessage, setSubmittedUserMessage] = useState("");
   const [selectedModelId, setSelectedModelId] = useState("auto");
   const [viewMode, setViewMode] = useState<ViewMode>("plain");
   const [plainScrollTop, setPlainScrollTop] = useState(0);
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
   const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
-  const promptSections = useMemo(() => getPromptSections(selectedLayerIds, userMessage), [selectedLayerIds, userMessage]);
+  const promptSections = useMemo(
+    () => getPromptSections(selectedLayerIds, submittedUserMessage),
+    [selectedLayerIds, submittedUserMessage],
+  );
   const text = useMemo(() => promptSections.map((section) => section.content).join("\n\n"), [promptSections]);
   const tokens = useMemo(() => tokenize(text), [text]);
-  const userMessageTokens = useMemo(() => tokenize(userMessage), [userMessage]);
+  const draftUserMessageTokens = useMemo(() => tokenize(draftUserMessage), [draftUserMessage]);
   const summary = useMemo(() => summarizeTokens(text, tokens, selectedModel), [text, tokens, selectedModel]);
   const displayedTokens = tokens.slice(0, 500);
   const contextPercent = summary.model?.contextPercentage ?? 0;
   const remainingContext = Math.max(selectedModel.contextWindow - summary.tokens, 0);
   const estimatedInputCost = estimateInputUsd(summary.tokens, selectedModel);
   const estimatedInputAiCredits = estimateInputAiCredits(summary.tokens, selectedModel);
-  const estimatedUserMessageCost = estimateInputUsd(userMessageTokens.length, selectedModel);
-  const estimatedUserMessageAiCredits = estimateInputAiCredits(userMessageTokens.length, selectedModel);
+  const estimatedUserMessageCost = estimateInputUsd(draftUserMessageTokens.length, selectedModel);
+  const estimatedUserMessageAiCredits = estimateInputAiCredits(draftUserMessageTokens.length, selectedModel);
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
   const invoiceRows = useMemo(() => {
     const activeRows = new Map(
@@ -218,7 +222,13 @@ export default function App() {
         aiCredits: 0,
         active: false,
       }),
-      activeRows.get("user"),
+      activeRows.get("user") ?? {
+        id: "user",
+        label: "User message",
+        tokens: 0,
+        aiCredits: 0,
+        active: false,
+      },
     ].filter((row): row is {
       id: string;
       label: string;
@@ -248,7 +258,7 @@ export default function App() {
   }
 
   function applyLayers(nextLayerIds: string[], focusMarker?: string) {
-    const nextText = composePrompt(nextLayerIds, userMessage);
+    const nextText = composePrompt(nextLayerIds, submittedUserMessage);
     setSelectedLayerIds(nextLayerIds);
     setViewMode("plain");
     scrollPlainEditorTo(nextText, focusMarker);
@@ -265,9 +275,10 @@ export default function App() {
   }
 
   function resetPrompt() {
-    const nextText = composePrompt([], defaultUserRequest);
+    const nextText = composePrompt([], "");
     setSelectedLayerIds([]);
-    setUserMessage(defaultUserRequest);
+    setDraftUserMessage(defaultUserRequest);
+    setSubmittedUserMessage("");
     setViewMode("plain");
     scrollPlainEditorTo(nextText);
   }
@@ -275,21 +286,18 @@ export default function App() {
   function clearPrompt() {
     const nextText = composePrompt([], "");
     setSelectedLayerIds([]);
-    setUserMessage("");
+    setDraftUserMessage("");
+    setSubmittedUserMessage("");
     setViewMode("plain");
     scrollPlainEditorTo(nextText);
   }
 
-  function updateUserMessage(value: string) {
-    setUserMessage(value);
-    setViewMode("plain");
-    scrollPlainEditorTo(composePrompt(selectedLayerIds, value), "<userRequest>");
-  }
-
   function submitUserMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nextText = composePrompt(selectedLayerIds, draftUserMessage);
+    setSubmittedUserMessage(draftUserMessage);
     setViewMode("plain");
-    scrollPlainEditorTo(text, "<userRequest>");
+    scrollPlainEditorTo(nextText, "<userRequest>");
     chatInputRef.current?.focus({ preventScroll: true });
   }
 
@@ -298,7 +306,7 @@ export default function App() {
       ? selectedLayerIds.filter((id) => id !== layerId)
       : [...selectedLayerIds, layerId];
 
-    return tokenize(composePrompt(nextLayerIds, userMessage)).length - tokens.length;
+    return tokenize(composePrompt(nextLayerIds, submittedUserMessage)).length - tokens.length;
   }
 
   return (
@@ -484,10 +492,11 @@ export default function App() {
                 ref={chatInputRef}
                 id="chat-message"
                 className="chat-input"
-                value={userMessage}
-                onChange={(event) => updateUserMessage(event.target.value)}
+                value={draftUserMessage}
                 placeholder="Ask Copilot or paste the user request to estimate its prompt impact..."
                 aria-label="Chat message input"
+                aria-readonly="true"
+                readOnly
                 rows={2}
                 spellCheck="true"
               />
@@ -496,7 +505,7 @@ export default function App() {
               </button>
               <dl className="chat-impact" aria-label="Chat message token and credit impact">
                 <div>
-                  <dd>{formatNumber(userMessageTokens.length)}</dd>
+                  <dd>{formatNumber(draftUserMessageTokens.length)}</dd>
                   <dt>tokens</dt>
                 </div>
                 <div>

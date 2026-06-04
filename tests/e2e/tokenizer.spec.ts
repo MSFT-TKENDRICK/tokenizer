@@ -1,9 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
-import { composePrompt, promptPatchLayers } from "../../src/lib/examples";
+import { composePrompt, defaultUserRequest, promptPatchLayers } from "../../src/lib/examples";
 
-const basePrompt = composePrompt([]);
+const basePrompt = composePrompt([], "");
 const allLayerIds = promptPatchLayers.map((layer) => layer.id);
-const fullPrompt = composePrompt(allLayerIds);
+const fullPrompt = composePrompt(allLayerIds, "");
 
 test.beforeEach(async ({ page }, testInfo) => {
   const browserErrors: string[] = [];
@@ -102,7 +102,10 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   const baseTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
 
   expect(await textarea.evaluate((element) => element.readOnly)).toBe(true);
+  expect(await chatInput.evaluate((element) => element.readOnly)).toBe(true);
   await expect(chatInput).toHaveCSS("resize", "none");
+  await expect(chatInput).toHaveValue(defaultUserRequest);
+  await expect(textarea).not.toHaveValue(new RegExp(defaultUserRequest.slice(0, 24)));
   await textarea.focus();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
   await textarea.pressSequentially("Hello, ");
@@ -111,17 +114,16 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(textarea).toHaveValue(initialPrompt);
   await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
 
-  await chatInput.fill("Hello, world! 🚀");
-  await expect(textarea).toHaveValue(composePrompt([], "Hello, world! 🚀"));
-  await expect(chatImpactMetric(page, "tokens")).toHaveText("7");
-  await expect(chatImpactMetric(page, "AI credits")).toHaveText("0.0032");
-  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeLessThan(baseTokens);
+  await expect(chatImpactMetric(page, "tokens")).toHaveText("45");
+  await expect(chatImpactMetric(page, "AI credits")).toHaveText("0.0203");
+  await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
   await page.getByRole("button", { name: "Submit user message" }).click();
+  await expect(textarea).toHaveValue(composePrompt([], defaultUserRequest));
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<userRequest>" })).toBeInViewport();
   await expect(chatInput).toBeFocused();
 
   await page.getByRole("button", { name: /Workspace context/ }).click();
-  await expect(textarea).toHaveValue(composePrompt(["workspace"], "Hello, world! 🚀"));
+  await expect(textarea).toHaveValue(composePrompt(["workspace"], defaultUserRequest));
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(
     Number((await chatImpactMetric(page, "tokens").textContent())?.replace(/,/g, "")),
   );
@@ -134,6 +136,7 @@ test("XML syntax highlighting preserves readonly closing tags while scrolling", 
   await expect(page.locator(".plaintext-highlight")).toHaveText(basePrompt);
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</coding_agent_instructions>" })).toBeVisible();
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</system>" })).toHaveCount(1);
+  await page.getByRole("button", { name: "Submit user message" }).click();
 
   await editor.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -151,14 +154,14 @@ test("Clear empties chat input and Restore sample restores the base prompt", asy
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(0);
 
   await page.getByRole("tab", { name: "Tokens" }).click();
-  await expect(page.getByLabel("Token text view")).toContainText("userRequest");
+  await expect(page.getByLabel("Token text view")).not.toContainText("userRequest");
 
   await page.getByRole("button", { name: "Restore sample" }).click();
   await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
-  await expect(page.getByLabel("Chat message input")).toHaveValue(
-    "Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.",
-  );
+  await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
+  await page.getByRole("button", { name: "Submit user message" }).click();
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], defaultUserRequest));
 });
 
 test("context layer buttons apply and remove prompt diffs", async ({ page }) => {
@@ -170,16 +173,16 @@ test("context layer buttons apply and remove prompt diffs", async ({ page }) => 
   await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
   await workspaceButton.click();
   await expect(workspaceButton).toHaveAttribute("aria-pressed", "true");
-  await expect(editor).toHaveValue(composePrompt(["workspace"]));
-  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace"]));
+  await expect(editor).toHaveValue(composePrompt(["workspace"], ""));
+  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace"], ""));
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<workspace_info>" })).toBeInViewport();
   await expect(page.getByLabel("Selected context preview")).toContainText("diff --git");
   await expect(page.getByLabel("Selected context preview")).toContainText("+<workspace_info>");
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(baseTokens);
 
   await toolsButton.click();
-  await expect(editor).toHaveValue(composePrompt(["workspace", "tools"]));
-  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace", "tools"]));
+  await expect(editor).toHaveValue(composePrompt(["workspace", "tools"], ""));
+  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace", "tools"], ""));
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<skills>" })).toBeInViewport();
   await expect(editor).toHaveValue(/  <skill>/);
   await expect(page.getByLabel("Selected context preview")).toContainText("+<name>web-design-reviewer</name>");
@@ -187,8 +190,8 @@ test("context layer buttons apply and remove prompt diffs", async ({ page }) => 
 
   await workspaceButton.click();
   await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
-  await expect(editor).toHaveValue(composePrompt(["tools"]));
-  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["tools"]));
+  await expect(editor).toHaveValue(composePrompt(["tools"], ""));
+  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["tools"], ""));
   await expect(editor).not.toHaveValue(/workspace_info/);
 });
 

@@ -135,7 +135,7 @@ Choose the most appropriate agent when asked to run a subagent.
 
 export function getPromptSections(selectedLayerIds: readonly string[], userRequest = defaultUserRequest): PromptSection[] {
   const selected = new Set(selectedLayerIds);
-  return [
+  const sections: PromptSection[] = [
     { id: "system", label: "System prompt", content: formatPromptXml(baseSystem) },
     ...promptPatchLayers
       .filter((layer) => selected.has(layer.id))
@@ -144,14 +144,19 @@ export function getPromptSections(selectedLayerIds: readonly string[], userReque
         label: layer.id === "instructions" ? "Custom instructions" : layer.name,
         content: formatPromptXml(layer.content),
       })),
-    {
+  ];
+
+  if (userRequest.trim().length > 0) {
+    sections.push({
       id: "user",
       label: "User message",
       content: formatPromptXml(`<userRequest>
 ${userRequest}
 </userRequest>`),
-    },
-  ];
+    });
+  }
+
+  return sections;
 }
 
 export function composePrompt(selectedLayerIds: readonly string[], userRequest = defaultUserRequest) {
