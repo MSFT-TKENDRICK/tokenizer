@@ -50,10 +50,6 @@ function visibleTokenText(token: Token) {
   return token.text;
 }
 
-function formatMultiplier(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
-}
-
 function modelOptionLabel(modelId: string) {
   const model = modelById(modelId);
   if (!model) {
@@ -61,12 +57,41 @@ function modelOptionLabel(modelId: string) {
   }
 
   const creditRate = formatAiCredits(inputAiCreditsPerMillionTokens(model));
-  const multiplier =
-    model.legacyPremiumRequestMultiplier === undefined
-      ? "no legacy multiplier"
-      : `${formatMultiplier(model.legacyPremiumRequestMultiplier)}x`;
-  const suffix = model.id === "auto" ? "10% discount" : model.provider;
-  return `${model.name} · ${suffix} · ${creditRate} credits/1M · ${multiplier}`;
+  const cachedCreditRate = formatAiCredits(model.pricing.cachedInputPerMillionTokensUsd / 0.01);
+  const suffix = model.id === "auto" ? "10% off" : model.provider;
+  return `${model.name} · ${suffix} · ${creditRate}/1M in · ${cachedCreditRate}/1M cached`;
+}
+
+function highlightXml(value: string) {
+  const segments = value.split(/(<\/?[\w:-]+(?:\s+[\w:-]+=(?:"[^"]*"|'[^']*'))*\s*\/?>|<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>)/g);
+
+  return segments.map((segment, index) => {
+    if (segment.startsWith("<!--") || segment.startsWith("<![CDATA[")) {
+      return <span className="xml-comment" key={index}>{segment}</span>;
+    }
+
+    if (!segment.startsWith("<")) {
+      return <span key={index}>{segment}</span>;
+    }
+
+    const parts = segment.split(/(\s+[\w:-]+)(=)("[^"]*"|'[^']*')/g);
+    return (
+      <span className="xml-tag" key={index}>
+        {parts.map((part, partIndex) => {
+          if (/^\s+[\w:-]+$/.test(part)) {
+            return <span className="xml-attr" key={partIndex}>{part}</span>;
+          }
+          if (part === "=") {
+            return <span className="xml-punctuation" key={partIndex}>{part}</span>;
+          }
+          if (/^["']/.test(part)) {
+            return <span className="xml-string" key={partIndex}>{part}</span>;
+          }
+          return <span key={partIndex}>{part}</span>;
+        })}
+      </span>
+    );
+  });
 }
 
 function PatchLayerIcon({ icon }: { icon: string }) {
@@ -115,6 +140,7 @@ export default function App() {
   const [text, setText] = useState(composePrompt([]));
   const [selectedModelId, setSelectedModelId] = useState("auto");
   const [viewMode, setViewMode] = useState<ViewMode>("plain");
+  const [plainScrollTop, setPlainScrollTop] = useState(0);
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
   const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
@@ -163,8 +189,8 @@ export default function App() {
     <main className="app-shell" aria-labelledby="app-title">
       <section className="hero panel">
         <div>
-          <p className="eyebrow">Local text insight</p>
-          <h1 id="app-title">Tokenizer workspace</h1>
+          <p className="eyebrow">GitHub Copilot</p>
+          <h1 id="app-title">GitHub Copilot Tokenization</h1>
           <p className="hero-copy">
             Paste text to inspect an approximate token breakdown, readable usage counts, and how much of a selected context window your prompt may consume.
           </p>
@@ -173,13 +199,6 @@ export default function App() {
 
       <section className="workspace">
         <div className="editor-card panel">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Workspace</p>
-              <h2>Text, tokens, and token IDs</h2>
-            </div>
-          </div>
-
           <div className="view-bar">
             <div className="view-toggle" role="tablist" aria-label="Tokenizer view mode">
               <button
@@ -266,16 +285,12 @@ export default function App() {
                   <dd>${formatNumber(selectedModel.pricing.inputPerMillionTokensUsd)}/1M</dd>
                 </div>
                 <div>
-                  <dt>credits</dt>
-                  <dd>{formatAiCredits(inputAiCreditRate)}/1M</dd>
+                  <dt>cached</dt>
+                  <dd>${formatNumber(selectedModel.pricing.cachedInputPerMillionTokensUsd)}/1M</dd>
                 </div>
                 <div>
-                  <dt>legacy</dt>
-                  <dd>
-                    {selectedModel.legacyPremiumRequestMultiplier === undefined
-                      ? "—"
-                      : `${formatMultiplier(selectedModel.legacyPremiumRequestMultiplier)}x`}
-                  </dd>
+                  <dt>credits</dt>
+                  <dd>{formatAiCredits(inputAiCreditRate)}/1M</dd>
                 </div>
               </dl>
               <div className="patch-layer-grid" aria-label="Prompt context layers">
@@ -314,14 +329,24 @@ export default function App() {
               </div>
             </div>
             {viewMode === "plain" ? (
-              <textarea
-                className="text-viewport text-input"
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                placeholder="Paste or type text here..."
-                aria-label="Plaintext editor"
-                spellCheck="true"
-              />
+              <div className="plaintext-shell">
+                <pre
+                  className="text-viewport plaintext-highlight"
+                  aria-hidden="true"
+                  style={{ transform: `translateY(-${plainScrollTop}px)` }}
+                >
+                  {text ? highlightXml(text) : <span className="placeholder-highlight">Paste or type text here...</span>}
+                </pre>
+                <textarea
+                  className="text-viewport text-input"
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                  onScroll={(event) => setPlainScrollTop(event.currentTarget.scrollTop)}
+                  placeholder="Paste or type text here..."
+                  aria-label="Plaintext editor"
+                  spellCheck="true"
+                />
+              </div>
             ) : tokens.length === 0 ? (
               <div
                 className="text-viewport readonly-view empty-view"

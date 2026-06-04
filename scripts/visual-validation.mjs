@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
 const baseURL = process.env.VISUAL_BASE_URL ?? "http://127.0.0.1:4173";
@@ -6,8 +6,17 @@ const outputDir = process.env.VISUAL_OUTPUT_DIR ?? "visual-results";
 
 const scenarios = [
   {
+    name: "desktop-default",
+    viewport: { width: 1440, height: 900 },
+    viewLabel: "Plaintext editor",
+    run: async (page) => {
+      await page.goto(baseURL);
+    },
+  },
+  {
     name: "desktop-tokens",
     viewport: { width: 1440, height: 900 },
+    viewLabel: "Token text view",
     run: async (page) => {
       await page.goto(baseURL);
       await page.getByRole("button", { name: /Workspace/ }).click();
@@ -21,6 +30,7 @@ const scenarios = [
   {
     name: "desktop-token-ids",
     viewport: { width: 1280, height: 860 },
+    viewLabel: "Token ID view",
     run: async (page) => {
       await page.goto(baseURL);
       await page.getByLabel("Plaintext editor").fill("Hello, world! 🚀\nA second line with 42 tokens?");
@@ -28,8 +38,17 @@ const scenarios = [
     },
   },
   {
+    name: "mobile-default",
+    viewport: { width: 390, height: 844 },
+    viewLabel: "Plaintext editor",
+    run: async (page) => {
+      await page.goto(baseURL);
+    },
+  },
+  {
     name: "mobile-tokens",
     viewport: { width: 390, height: 844 },
+    viewLabel: "Token text view",
     run: async (page) => {
       await page.goto(baseURL);
       await page.getByRole("button", { name: /Tools/ }).click();
@@ -38,6 +57,7 @@ const scenarios = [
   },
 ];
 
+await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 
 const browser = await chromium.launch();
@@ -55,9 +75,13 @@ for (const scenario of scenarios) {
 
   try {
     await scenario.run(page);
-    await page.getByRole("heading", { name: "Tokenizer workspace" }).waitFor();
-    await page.getByLabel(/Token (text|ID) view/).waitFor();
-    await page.locator(".token-segment").first().waitFor();
+    await page.getByRole("heading", { name: "GitHub Copilot Tokenization" }).waitFor();
+    await page.getByLabel(scenario.viewLabel).waitFor();
+    if (scenario.viewLabel !== "Plaintext editor") {
+      await page.locator(".token-segment").first().waitFor();
+    } else {
+      await page.locator(".plaintext-highlight .xml-tag").first().waitFor();
+    }
     const hasHorizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
     );

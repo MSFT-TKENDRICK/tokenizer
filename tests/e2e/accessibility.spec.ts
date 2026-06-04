@@ -6,7 +6,7 @@ const THEMES = ["light", "dark"] as const;
 for (const theme of THEMES) {
   test(`has no automated accessibility violations in ${theme} theme`, async ({ page }) => {
     await page.goto(`/?scoutTheme=${theme}`);
-    await expect(page.getByRole("heading", { name: "Tokenizer workspace" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
 
     const results = await new AxeBuilder({ page }).analyze();
     expect(results.violations).toEqual([]);

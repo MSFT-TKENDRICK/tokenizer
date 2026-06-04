@@ -14,7 +14,6 @@ export interface CopilotModel extends ModelLimit {
     outputPerMillionTokensUsd: number;
     cacheWritePerMillionTokensUsd?: number;
   };
-  legacyPremiumRequestMultiplier?: number;
   notes?: string;
 }
 
@@ -37,8 +36,6 @@ export const AUTO_MODEL_DISCOUNT = 0.1;
 // - Current usage-based prices are from GitHub Docs, "Models and pricing for GitHub Copilot":
 //   https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
 // - GitHub Docs define 1 AI credit = $0.01 USD; prices below are per 1 million tokens.
-// - Legacy premium request multipliers are from GitHub Docs, "Model multipliers for annual plans on request-based billing (legacy)".
-// - Multipliers apply only to legacy annual Copilot Pro/Pro+ request-based billing; current billing uses per-token AI credits.
 // - Context windows here are planning estimates for tokenizer visualization, using published pricing tiers where available.
 export const COPILOT_MODELS: readonly CopilotModel[] = [
   {
@@ -50,7 +47,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 0.25, cachedInputPerMillionTokensUsd: 0.025, outputPerMillionTokensUsd: 2 },
-    legacyPremiumRequestMultiplier: 0.33,
     notes: "Included model in Copilot plans.",
   },
   {
@@ -62,7 +58,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 1.75, cachedInputPerMillionTokensUsd: 0.175, outputPerMillionTokensUsd: 14 },
-    legacyPremiumRequestMultiplier: 3,
   },
   {
     id: "gpt-5.2-codex",
@@ -73,7 +68,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 1.75, cachedInputPerMillionTokensUsd: 0.175, outputPerMillionTokensUsd: 14 },
-    legacyPremiumRequestMultiplier: 3,
   },
   {
     id: "gpt-5.3-codex",
@@ -84,7 +78,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 1.75, cachedInputPerMillionTokensUsd: 0.175, outputPerMillionTokensUsd: 14 },
-    legacyPremiumRequestMultiplier: 6,
   },
   {
     id: "gpt-5.4",
@@ -95,7 +88,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 272_000,
     pricing: { inputPerMillionTokensUsd: 2.5, cachedInputPerMillionTokensUsd: 0.25, outputPerMillionTokensUsd: 15 },
-    legacyPremiumRequestMultiplier: 6,
     notes: "Published pricing applies to prompts with <=272K tokens.",
   },
   {
@@ -107,7 +99,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 0.75, cachedInputPerMillionTokensUsd: 0.075, outputPerMillionTokensUsd: 4.5 },
-    legacyPremiumRequestMultiplier: 6,
   },
   {
     id: "gpt-5.4-nano",
@@ -128,7 +119,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 5, cachedInputPerMillionTokensUsd: 0.5, outputPerMillionTokensUsd: 30 },
-    legacyPremiumRequestMultiplier: 57,
   },
   {
     id: "claude-haiku-4.5",
@@ -144,7 +134,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
       cacheWritePerMillionTokensUsd: 1.25,
       outputPerMillionTokensUsd: 5,
     },
-    legacyPremiumRequestMultiplier: 0.33,
   },
   {
     id: "claude-sonnet-4.6",
@@ -160,7 +149,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
       cacheWritePerMillionTokensUsd: 3.75,
       outputPerMillionTokensUsd: 15,
     },
-    legacyPremiumRequestMultiplier: 9,
   },
   {
     id: "claude-sonnet-4.5",
@@ -176,7 +164,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
       cacheWritePerMillionTokensUsd: 3.75,
       outputPerMillionTokensUsd: 15,
     },
-    legacyPremiumRequestMultiplier: 6,
   },
   {
     id: "claude-sonnet-4",
@@ -207,7 +194,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
       cacheWritePerMillionTokensUsd: 6.25,
       outputPerMillionTokensUsd: 25,
     },
-    legacyPremiumRequestMultiplier: 27,
   },
   {
     id: "claude-opus-4.7",
@@ -223,7 +209,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
       cacheWritePerMillionTokensUsd: 6.25,
       outputPerMillionTokensUsd: 25,
     },
-    legacyPremiumRequestMultiplier: 27,
   },
   {
     id: "claude-opus-4.6",
@@ -239,7 +224,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
       cacheWritePerMillionTokensUsd: 6.25,
       outputPerMillionTokensUsd: 25,
     },
-    legacyPremiumRequestMultiplier: 27,
   },
   {
     id: "claude-opus-4.5",
@@ -255,7 +239,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
       cacheWritePerMillionTokensUsd: 6.25,
       outputPerMillionTokensUsd: 25,
     },
-    legacyPremiumRequestMultiplier: 15,
   },
   {
     id: "gemini-2.5-pro",
@@ -266,7 +249,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 200_000,
     pricing: { inputPerMillionTokensUsd: 1.25, cachedInputPerMillionTokensUsd: 0.125, outputPerMillionTokensUsd: 10 },
-    legacyPremiumRequestMultiplier: 1,
     notes: "Published pricing applies to prompts with <=200K tokens.",
   },
   {
@@ -278,7 +260,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "Public preview",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 0.5, cachedInputPerMillionTokensUsd: 0.05, outputPerMillionTokensUsd: 3 },
-    legacyPremiumRequestMultiplier: 0.33,
     notes: "No long-context surcharge.",
   },
   {
@@ -290,7 +271,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "Public preview",
     contextWindow: 200_000,
     pricing: { inputPerMillionTokensUsd: 2, cachedInputPerMillionTokensUsd: 0.2, outputPerMillionTokensUsd: 12 },
-    legacyPremiumRequestMultiplier: 6,
     notes: "Published pricing applies to prompts with <=200K tokens.",
   },
   {
@@ -302,7 +282,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 1.5, cachedInputPerMillionTokensUsd: 0.15, outputPerMillionTokensUsd: 9 },
-    legacyPremiumRequestMultiplier: 14,
   },
   {
     id: "raptor-mini",
@@ -313,7 +292,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "Public preview",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 0.25, cachedInputPerMillionTokensUsd: 0.025, outputPerMillionTokensUsd: 2 },
-    legacyPremiumRequestMultiplier: 0.33,
     notes: "Uses GPT-5 mini pricing.",
   },
   {
@@ -325,8 +303,6 @@ export const COPILOT_MODELS: readonly CopilotModel[] = [
     releaseStatus: "GA",
     contextWindow: 128_000,
     pricing: { inputPerMillionTokensUsd: 0.75, cachedInputPerMillionTokensUsd: 0.075, outputPerMillionTokensUsd: 4.5 },
-    legacyPremiumRequestMultiplier: 0.33,
-    notes: "Legacy multiplier is documented as promotional.",
   },
 ];
 
@@ -342,10 +318,6 @@ export const COPILOT_AUTO_MODEL: CopilotModel = {
     cachedInputPerMillionTokensUsd: AUTO_MODEL_BASE.pricing.cachedInputPerMillionTokensUsd * (1 - AUTO_MODEL_DISCOUNT),
     outputPerMillionTokensUsd: AUTO_MODEL_BASE.pricing.outputPerMillionTokensUsd * (1 - AUTO_MODEL_DISCOUNT),
   },
-  legacyPremiumRequestMultiplier:
-    AUTO_MODEL_BASE.legacyPremiumRequestMultiplier === undefined
-      ? undefined
-      : AUTO_MODEL_BASE.legacyPremiumRequestMultiplier * (1 - AUTO_MODEL_DISCOUNT),
   notes: "Auto model selection applies the documented 10% discount; estimates use discounted GPT-5.5 rates as an upper-bound planning proxy because actual routing can vary.",
 };
 

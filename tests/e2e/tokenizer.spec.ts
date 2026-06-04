@@ -17,25 +17,29 @@ test.beforeEach(async ({ page }, testInfo) => {
   page.on("pageerror", (error) => browserErrors.push(error.message));
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Tokenizer workspace" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
 });
 
 test.afterEach(async ({ page }, testInfo) => {
   const errors = (testInfo as typeof testInfo & { browserErrors?: string[] }).browserErrors ?? [];
   expect(errors, "Browser console errors and page errors").toEqual([]);
-  await expect(page).toHaveTitle(/Tokenizer/);
+  await expect(page).toHaveTitle(/GitHub Copilot Tokenization/);
 });
 
 test("renders the tokenizer workspace with the default plaintext view", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Plaintext" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Text, tokens, and token IDs" })).toHaveCount(0);
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Prompt metrics")).toContainText(/\d+tokens/);
   await expect(page.getByLabel("Prompt metrics")).toContainText("AI credits");
   await expect(page.getByLabel("GitHub Copilot model selector")).toBeVisible();
   await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("auto");
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("51.3x");
   await expect(page.getByLabel("Model pricing metadata")).toContainText("450/1M");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("$0.5/1M");
+  await expect(page.getByLabel("Model pricing metadata")).not.toContainText("legacy");
   await expect(page.getByLabel("Prompt context controls")).toBeVisible();
+  await expect(page.locator(".plaintext-highlight .xml-tag").first()).toBeVisible();
   await expect(page.getByLabel("Selected context preview")).toContainText("No context added.");
   await expect(page.getByText("Diffs")).toHaveCount(0);
   await expect(page.getByText("Patch", { exact: true })).toHaveCount(0);
@@ -178,6 +182,7 @@ test("model selector changes context copy and meter width", async ({ page }) => 
   await expect(page.locator(".context-label strong")).toHaveText("0.7%");
   await expect(page.getByText("269,999 tokens remaining in a 272,000 token window.")).toBeVisible();
   await expect(page.getByLabel("Model pricing metadata")).toContainText("$2.5/1M");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("$0.3/1M");
   await expect(page.getByLabel("Model pricing metadata")).toContainText("250/1M");
   await expect(inlineMetric(page, "ai-credits")).toHaveText("0.5003");
 
@@ -186,14 +191,14 @@ test("model selector changes context copy and meter width", async ({ page }) => 
 
   await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("claude-haiku-4.5");
   await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("claude-haiku-4.5");
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("0.33x");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("100/1M");
 });
 
 test("mobile viewport keeps visible features usable", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Tokenizer workspace" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
   await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Plaintext editor")).toBeVisible();
   await page.getByRole("tab", { name: "Tokens" }).click();

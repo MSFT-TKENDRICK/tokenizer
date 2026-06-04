@@ -63,14 +63,6 @@ describe("Copilot model pricing", () => {
     expect(inputAiCreditsPerMillionTokens(auto)).toBe(450);
   });
 
-  it("keeps legacy request multipliers separate from usage-based AI credit pricing", () => {
-    expect(model("gpt-5.5").legacyPremiumRequestMultiplier).toBe(57);
-    expect(model("claude-opus-4.5").legacyPremiumRequestMultiplier).toBe(15);
-    expect(model("claude-opus-4.8").legacyPremiumRequestMultiplier).toBe(27);
-    expect(model("claude-sonnet-4").legacyPremiumRequestMultiplier).toBeUndefined();
-    expect(COPILOT_MODEL_OPTIONS[0].legacyPremiumRequestMultiplier).toBeCloseTo(51.3);
-  });
-
   it("keeps Auto as a single virtual model option outside provider groups", () => {
     expect(COPILOT_MODEL_OPTIONS.filter((candidate) => candidate.id === "auto")).toHaveLength(1);
     expect(COPILOT_MODELS.some((candidate) => candidate.id === "auto")).toBe(false);
