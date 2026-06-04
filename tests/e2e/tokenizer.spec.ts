@@ -40,6 +40,9 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByLabel("Model pricing metadata")).not.toContainText("legacy");
   await expect(page.getByLabel("Prompt context controls")).toBeVisible();
   await expect(page.locator(".plaintext-highlight .xml-tag").first()).toBeVisible();
+  await expect(page.locator(".plaintext-highlight")).toContainText("</coding_agent_instructions>");
+  await expect(page.locator(".plaintext-highlight")).toContainText("</system>");
+  expect(await page.locator(".plaintext-highlight").textContent()).toBe(basePrompt);
   await expect(page.getByLabel("Selected context preview")).toContainText("No context added.");
   await expect(page.getByText("Diffs")).toHaveCount(0);
   await expect(page.getByText("Patch", { exact: true })).toHaveCount(0);
@@ -103,6 +106,27 @@ test("typing and pasting input updates counts and token visualization", async ({
   );
 });
 
+test("XML syntax highlighting preserves closing tags while editing and scrolling", async ({ page }) => {
+  const editor = page.getByLabel("Plaintext editor");
+  const xml = [
+    "<root>",
+    "  <child attr=\"one\">Alpha</child>",
+    "  <child attr=\"two\">Beta</child>",
+    "</root>",
+  ].join("\n");
+
+  await editor.fill(xml);
+  await expect(page.locator(".plaintext-highlight")).toHaveText(xml);
+  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</child>" })).toHaveCount(2);
+  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</root>" })).toBeVisible();
+
+  await editor.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect(page.locator(".plaintext-highlight")).toContainText("</root>");
+});
+
 test("Clear empties state and Restore sample restores the base prompt", async ({ page }) => {
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue("");
@@ -131,18 +155,23 @@ test("context layer buttons apply and remove prompt diffs", async ({ page }) => 
   await workspaceButton.click();
   await expect(workspaceButton).toHaveAttribute("aria-pressed", "true");
   await expect(editor).toHaveValue(composePrompt(["workspace"]));
+  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace"]));
+  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<workspace_info>" })).toBeInViewport();
   await expect(page.getByLabel("Selected context preview")).toContainText("diff --git");
   await expect(page.getByLabel("Selected context preview")).toContainText("+<workspace_info>");
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(baseTokens);
 
   await toolsButton.click();
   await expect(editor).toHaveValue(composePrompt(["workspace", "tools"]));
+  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace", "tools"]));
+  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<skills>" })).toBeInViewport();
   await expect(page.getByLabel("Selected context preview")).toContainText("+<name>web-design-reviewer</name>");
   await expect(page.getByLabel("Selected context preview")).toContainText("+<instruction forToolsWithPrefix=\"mcp_github\">");
 
   await workspaceButton.click();
   await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
   await expect(editor).toHaveValue(composePrompt(["tools"]));
+  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["tools"]));
   await expect(editor).not.toHaveValue(/workspace_info/);
 });
 

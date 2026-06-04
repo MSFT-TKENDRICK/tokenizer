@@ -441,6 +441,10 @@ h3 {
   overflow: hidden;
 }
 
+.plaintext-highlight-content {
+  display: block;
+}
+
 .placeholder-highlight {
   color: var(--color-muted);
 }

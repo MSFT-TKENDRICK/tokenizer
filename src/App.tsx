@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   summarizeTokens,
   tokenize,
@@ -63,18 +63,38 @@ function modelOptionLabel(modelId: string) {
 }
 
 function highlightXml(value: string) {
-  const segments = value.split(/(<\/?[\w:-]+(?:\s+[\w:-]+=(?:"[^"]*"|'[^']*'))*\s*\/?>|<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>)/g);
+  const segments: { kind: "text" | "comment" | "tag"; value: string }[] = [];
+  const xmlPattern = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\/?[\w:-]+(?:\s+[\w:-]+=(?:"[^"]*"|'[^']*'))*\s*\/?>/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = xmlPattern.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ kind: "text", value: value.slice(lastIndex, match.index) });
+    }
+
+    const [token] = match;
+    segments.push({
+      kind: token.startsWith("<!--") || token.startsWith("<![CDATA[") ? "comment" : "tag",
+      value: token,
+    });
+    lastIndex = match.index + token.length;
+  }
+
+  if (lastIndex < value.length) {
+    segments.push({ kind: "text", value: value.slice(lastIndex) });
+  }
 
   return segments.map((segment, index) => {
-    if (segment.startsWith("<!--") || segment.startsWith("<![CDATA[")) {
-      return <span className="xml-comment" key={index}>{segment}</span>;
+    if (segment.kind === "comment") {
+      return <span className="xml-comment" key={index}>{segment.value}</span>;
     }
 
-    if (!segment.startsWith("<")) {
-      return <span key={index}>{segment}</span>;
+    if (segment.kind === "text") {
+      return <span key={index}>{segment.value}</span>;
     }
 
-    const parts = segment.split(/(\s+[\w:-]+)(=)("[^"]*"|'[^']*')/g);
+    const parts = segment.value.split(/(\s+[\w:-]+)(=)("[^"]*"|'[^']*')/g);
     return (
       <span className="xml-tag" key={index}>
         {parts.map((part, partIndex) => {
@@ -136,6 +156,7 @@ function PatchLayerIcon({ icon }: { icon: string }) {
 }
 
 export default function App() {
+  const plainEditorRef = useRef<HTMLTextAreaElement>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [text, setText] = useState(composePrompt([]));
   const [selectedModelId, setSelectedModelId] = useState("auto");
@@ -153,10 +174,27 @@ export default function App() {
   const estimatedInputAiCredits = estimateInputAiCredits(summary.tokens, selectedModel);
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
 
-  function applyLayers(nextLayerIds: string[]) {
+  function scrollPlainEditorTo(textValue: string, marker?: string) {
+    const markerIndex = marker ? textValue.indexOf(marker) : -1;
+    const targetText = markerIndex >= 0 ? textValue.slice(0, markerIndex) : "";
+    const targetLine = targetText.split("\n").length - 1;
+    const lineHeight = 29;
+    const nextScrollTop = markerIndex >= 0 ? Math.max(targetLine * lineHeight - 24, 0) : 0;
+
+    setPlainScrollTop(nextScrollTop);
+    requestAnimationFrame(() => {
+      if (plainEditorRef.current) {
+        plainEditorRef.current.scrollTop = nextScrollTop;
+      }
+    });
+  }
+
+  function applyLayers(nextLayerIds: string[], focusMarker?: string) {
+    const nextText = composePrompt(nextLayerIds);
     setSelectedLayerIds(nextLayerIds);
-    setText(composePrompt(nextLayerIds));
+    setText(nextText);
     setViewMode("plain");
+    scrollPlainEditorTo(nextText, focusMarker);
   }
 
   function toggleLayer(layerId: string) {
@@ -164,7 +202,9 @@ export default function App() {
       ? selectedLayerIds.filter((id) => id !== layerId)
       : [...selectedLayerIds, layerId];
 
-    applyLayers(nextLayerIds);
+    const toggledLayer = promptPatchLayers.find((layer) => layer.id === layerId);
+    const focusMarker = selectedLayerSet.has(layerId) ? undefined : toggledLayer?.content.split("\n")[0];
+    applyLayers(nextLayerIds, focusMarker);
   }
 
   function resetPrompt() {
@@ -175,6 +215,7 @@ export default function App() {
     setSelectedLayerIds([]);
     setText("");
     setViewMode("plain");
+    scrollPlainEditorTo("");
   }
 
   function marginalTokenDelta(layerId: string) {
@@ -333,11 +374,16 @@ export default function App() {
                 <pre
                   className="text-viewport plaintext-highlight"
                   aria-hidden="true"
-                  style={{ transform: `translateY(-${plainScrollTop}px)` }}
                 >
-                  {text ? highlightXml(text) : <span className="placeholder-highlight">Paste or type text here...</span>}
+                  <span
+                    className="plaintext-highlight-content"
+                    style={{ transform: `translateY(-${plainScrollTop}px)` }}
+                  >
+                    {text ? highlightXml(text) : <span className="placeholder-highlight">Paste or type text here...</span>}
+                  </span>
                 </pre>
                 <textarea
+                  ref={plainEditorRef}
                   className="text-viewport text-input"
                   value={text}
                   onChange={(event) => setText(event.target.value)}
