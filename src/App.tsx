@@ -606,32 +606,53 @@ export default function App() {
 
       <footer className="references" aria-labelledby="references-title">
         <p className="eyebrow">References</p>
-        <h2 id="references-title">Pricing and billing sources</h2>
+        <h2 id="references-title">Works cited</h2>
         <ol>
           <li>
-            <a href="https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing">
-              GitHub Docs: Models and pricing for GitHub Copilot
-            </a>
+            <cite>
+              “Models and Pricing for GitHub Copilot.” <span>GitHub Docs</span>,
+              GitHub,{" "}
+              <a href="https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing">
+                docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
+              </a>.
+            </cite>
+            <p>Primary pricing reference for Copilot model input, cached input, and output token rates.</p>
           </li>
           <li>
-            <a href="https://white-cliff-095e8700f.7.azurestaticapps.net/index.html">
-              GitHub Copilot usage-based billing preview
-            </a>
+            <cite>
+              “GitHub Copilot Usage-Based Billing Preview.” <span>Azure Static Web Apps</span>,{" "}
+              <a href="https://white-cliff-095e8700f.7.azurestaticapps.net/index.html">
+                white-cliff-095e8700f.7.azurestaticapps.net/index.html
+              </a>.
+            </cite>
+            <p>Preview calculator used to compare app estimates against a usage-based billing interface.</p>
           </li>
           <li>
-            <a href="https://user-level-budgets-p--holly-kassel.github.app/">
-              User-level budgets preview
-            </a>
+            <cite>
+              “User-Level Budgets Preview.” <span>GitHub App Preview</span>,{" "}
+              <a href="https://user-level-budgets-p--holly-kassel.github.app/">
+                user-level-budgets-p--holly-kassel.github.app
+              </a>.
+            </cite>
+            <p>Reference for budget-focused Copilot usage controls and user-level spend framing.</p>
           </li>
           <li>
-            <a href="https://share.articulate.com/pmpueguUReJvPTq-7f_aY">
-              Copilot billing training reference
-            </a>
+            <cite>
+              “Copilot Billing Training Reference.” <span>Articulate</span>,{" "}
+              <a href="https://share.articulate.com/pmpueguUReJvPTq-7f_aY">
+                share.articulate.com/pmpueguUReJvPTq-7f_aY
+              </a>.
+            </cite>
+            <p>Training material used for terminology, billing concepts, and explanatory copy alignment.</p>
           </li>
           <li>
-            <a href="https://copilot-billing-preview.github.com/">
-              Copilot billing preview
-            </a>
+            <cite>
+              “Copilot Billing Preview.” <span>GitHub Pages</span>,{" "}
+              <a href="https://copilot-billing-preview.github.com/">
+                copilot-billing-preview.github.com
+              </a>.
+            </cite>
+            <p>Preview experience used as a comparison point for Copilot billing presentation and usage summaries.</p>
           </li>
         </ol>
       </footer>

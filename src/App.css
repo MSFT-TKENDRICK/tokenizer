@@ -834,13 +834,32 @@ select {
 
 .references ol {
   display: grid;
-  gap: 10px;
+  gap: 14px;
   margin: 0;
   padding-left: 22px;
   color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.references li {
+  padding-left: 4px;
+}
+
+.references cite {
+  color: var(--color-primary);
+  font-style: normal;
+}
+
+.references cite span {
+  font-style: italic;
+}
+
+.references p:not(.eyebrow) {
+  max-width: 760px;
+  margin: 4px 0 0;
+  color: var(--color-muted);
 }
 
 .references a {
