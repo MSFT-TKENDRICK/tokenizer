@@ -17,6 +17,7 @@ import {
 } from "./lib/copilotModels";
 import {
   assistantResponseForTurn,
+  assistantResponseTraceForTurn,
   composeConversationRequest,
   composePrompt,
   conversationUserRequests,
@@ -404,7 +405,7 @@ export default function App() {
         aiCredits: estimateMixedInputAiCredits(uncachedInputTokens, cachedTokens, selectedModel),
       };
     });
-    const assistantOutputTokens = tokenize(assistantResponseForTurn(turnIndex)).length;
+    const assistantOutputTokens = tokenize(assistantResponseTraceForTurn(turnIndex)).length;
     rows.push({
       id: "assistant",
       label: "Assistant response",

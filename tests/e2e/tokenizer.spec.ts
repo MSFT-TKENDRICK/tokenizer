@@ -157,8 +157,9 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(textarea).toHaveValue(/<attachments>/);
   await expect(textarea).toHaveValue(/<context>/);
   await expect(textarea).toHaveValue(/tell me something new/);
+  await expect(textarea).toHaveValue(/<assistantResponse>/);
   await expect(textarea).toHaveValue(/modern browsers now support CSS container queries/);
-  await expect(textarea).not.toHaveValue(/<assistant|<assistantResponse/);
+  await expect(textarea).toHaveValue(/<\/assistantResponse>/);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
   await expect(submitButton).toBeEnabled();
   await expect(chatInput).toHaveValue(conversationUserRequests[1]);
@@ -171,6 +172,7 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
   await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
   await expect(textarea).toHaveValue(/Repository structure includes api\/src\/routes/);
+  await expect(textarea).toHaveValue(/<assistantResponse>/);
   await expect(textarea).toHaveValue(/modern browsers now support CSS container queries/);
   await expect(textarea).toHaveValue(/Using the prior workspace context, explain the next implementation step\./);
   await expect(textarea).toHaveValue(/inspect the changed files, identify the smallest safe edit/);
@@ -186,6 +188,7 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   );
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toContainText("workspace_info");
+  await expect(page.getByLabel("Token text view")).toContainText("assistantResponse");
   await expect(page.getByLabel("Token text view")).toContainText("modern browsers now support CSS container queries");
 });
 

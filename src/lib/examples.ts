@@ -78,16 +78,22 @@ export const conversationUserRequests = [
 ] as const;
 
 export const conversationAssistantResponses = [
-  `Picking a genuinely fresh, useful fact: I'll share a recent practical update you can actually use right away.
+  `Picking a genuinely fresh, useful fact: I’ll share a recent practical update you can actually use right away.
 
 A new and useful thing: modern browsers now support CSS container queries widely, which means components can adapt based on their own width, not just the viewport.
 
-That lets you build reusable UI pieces that behave correctly wherever they're placed, without tons of breakpoint hacks. For responsive design, this is one of the biggest shifts since Flexbox/Grid.`,
+That lets you build reusable UI pieces that behave correctly wherever they’re placed, without tons of breakpoint hacks. For responsive design, this is one of the biggest shifts since Flexbox/Grid.`,
   "The next implementation step is to inspect the changed files, identify the smallest safe edit, update the relevant test coverage, and run the existing validation commands before summarizing the result.",
 ] as const;
 
 export function assistantResponseForTurn(turnIndex: number) {
   return conversationAssistantResponses[turnIndex] ?? "I would answer using the submitted user request and the current prompt context.";
+}
+
+export function assistantResponseTraceForTurn(turnIndex: number) {
+  return formatPromptXml(`<assistantResponse>
+${assistantResponseForTurn(turnIndex)}
+</assistantResponse>`);
 }
 
 export const promptPatchLayers: readonly PromptPatchLayer[] = [
@@ -230,7 +236,7 @@ export function composeConversationRequest(messages: readonly string[], options:
   return messages.map((message, index) => [
     userPromptOneRaw,
     replaceTaggedContent(userPromptTwoRaw, "userRequest", message),
-    ...(options.includeAssistantResponses ? [assistantResponseForTurn(index)] : []),
+    ...(options.includeAssistantResponses ? [assistantResponseTraceForTurn(index)] : []),
   ].join("\n\n")).join("\n\n");
 }
 
