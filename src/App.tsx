@@ -9,14 +9,16 @@ import {
   COPILOT_MODEL_OPTIONS,
   estimateInputAiCredits,
   estimateInputUsd,
+  estimateOutputAiCredits,
+  estimateOutputUsd,
   inputAiCreditsPerMillionTokens,
   modelById,
   type CopilotModelFamilyId,
 } from "./lib/copilotModels";
 import {
+  assistantResponseForTurn,
   composeConversationRequest,
   composePrompt,
-  conversationAssistantResponses,
   conversationUserRequests,
   createPatchDiff,
   defaultUserRequest,
@@ -27,6 +29,23 @@ import "./App.css";
 
 type ViewMode = "chat" | "plain" | "tokens" | "ids";
 type InvoiceDirection = -1 | 0 | 1;
+
+interface InvoiceRow {
+  id: string;
+  label: string;
+  inputTokens: number;
+  cachedTokens: number;
+  outputTokens: number;
+  aiCredits: number;
+  active: boolean;
+}
+
+interface InvoiceTotal {
+  inputTokens: number;
+  cachedTokens: number;
+  outputTokens: number;
+  aiCredits: number;
+}
 
 const MODEL_GROUPS: readonly { id: CopilotModelFamilyId; label: string }[] = [
   { id: "anthropic", label: "Copilot · Claude" },
@@ -65,6 +84,10 @@ function estimateMixedInputAiCredits(inputTokens: number, cachedTokens: number, 
   return inputCredits + estimateCachedInputAiCredits(cachedTokens, model);
 }
 
+function emptyInvoiceTotal(): InvoiceTotal {
+  return { inputTokens: 0, cachedTokens: 0, outputTokens: 0, aiCredits: 0 };
+}
+
 function visibleTokenText(token: Token) {
   return token.text;
 }
@@ -77,8 +100,9 @@ function modelOptionLabel(modelId: string) {
 
   const creditRate = formatAiCredits(inputAiCreditsPerMillionTokens(model));
   const cachedCreditRate = formatAiCredits(model.pricing.cachedInputPerMillionTokensUsd / 0.01);
+  const outputCreditRate = formatAiCredits(model.pricing.outputPerMillionTokensUsd / 0.01);
   const suffix = model.id === "auto" ? "10% off" : model.provider;
-  return `${model.name} · ${suffix} · ${creditRate}/1M in · ${cachedCreditRate}/1M cached`;
+  return `${model.name} · ${suffix} · ${creditRate}/1M in · ${cachedCreditRate}/1M cached · ${outputCreditRate}/1M out`;
 }
 
 function highlightXml(value: string) {
@@ -232,6 +256,9 @@ export default function App() {
   const estimatedInputAiCredits = estimateInputAiCredits(summary.tokens, selectedModel);
   const estimatedUserMessageCost = estimateInputUsd(draftUserMessageTokens.length, selectedModel);
   const estimatedUserMessageAiCredits = estimateInputAiCredits(draftUserMessageTokens.length, selectedModel);
+  const selectedOutputTokens = selectedTurnIndex >= 0 ? tokenize(assistantResponseForTurn(selectedTurnIndex)).length : 0;
+  const selectedOutputCost = estimateOutputUsd(selectedOutputTokens, selectedModel);
+  const selectedOutputAiCredits = estimateOutputAiCredits(selectedOutputTokens, selectedModel);
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
   const invoicePages = useMemo(
     () => conversationTurns.map((_, index) => buildInvoicePage(index)),
@@ -242,11 +269,12 @@ export default function App() {
   const conversationTotals = useMemo(
     () => invoicePages.reduce(
       (total, page) => ({
-        tokens: total.tokens + page.total.tokens,
+        inputTokens: total.inputTokens + page.total.inputTokens,
         cachedTokens: total.cachedTokens + page.total.cachedTokens,
+        outputTokens: total.outputTokens + page.total.outputTokens,
         aiCredits: total.aiCredits + page.total.aiCredits,
       }),
-      { tokens: 0, cachedTokens: 0, aiCredits: 0 },
+      emptyInvoiceTotal(),
     ),
     [invoicePages],
   );
@@ -260,7 +288,7 @@ export default function App() {
       id: `assistant-${index}`,
       role: "assistant" as const,
       label: `Assistant response ${index + 1}`,
-      content: conversationAssistantResponses[index] ?? "I would answer using the submitted user request and the current prompt context.",
+      content: assistantResponseForTurn(index),
     },
   ]);
 
@@ -271,74 +299,82 @@ export default function App() {
     }));
 
     if (turnIndex < 0) {
-      const rows = [
+      const rows: InvoiceRow[] = [
         { id: "system", label: "System prompt" },
         ...optionalRows,
         { id: "user", label: "User message" },
+        { id: "assistant", label: "Assistant response" },
       ].map((row) => ({
         ...row,
-        tokens: 0,
+        inputTokens: 0,
         cachedTokens: 0,
+        outputTokens: 0,
         aiCredits: 0,
         active: false,
       }));
 
       return {
         rows,
-        total: { tokens: 0, cachedTokens: 0, aiCredits: 0 },
+        total: emptyInvoiceTotal(),
       };
     }
 
     const pageConversationRequest = composeConversationRequest(turnIndex >= 0 ? conversationTurns.slice(0, turnIndex + 1) : []);
     const previousConversationRequest = composeConversationRequest(turnIndex > 0 ? conversationTurns.slice(0, turnIndex) : []);
     const pageRows = buildInvoiceRows(getPromptSections(selectedLayerIds, pageConversationRequest));
-    const previousRows = new Map(buildInvoiceRows(getPromptSections(selectedLayerIds, previousConversationRequest)).map((row) => [row.id, row.tokens]));
+    const previousRows = new Map(buildInvoiceRows(getPromptSections(selectedLayerIds, previousConversationRequest)).map((row) => [row.id, row.inputTokens]));
 
     const activeRows = new Map(pageRows.map((row) => [row.id, row]));
     const rows = [
       activeRows.get("system"),
       ...optionalRows.map((row) => activeRows.get(row.id) ?? {
         ...row,
-        tokens: 0,
+        inputTokens: 0,
         cachedTokens: 0,
+        outputTokens: 0,
         aiCredits: 0,
         active: false,
       }),
       activeRows.get("user") ?? {
         id: "user",
         label: "User message",
-        tokens: 0,
+        inputTokens: 0,
         cachedTokens: 0,
+        outputTokens: 0,
         aiCredits: 0,
         active: false,
       },
-    ].filter((row): row is {
-      id: string;
-      label: string;
-      tokens: number;
-      cachedTokens: number;
-      aiCredits: number;
-      active: boolean;
-    } => row !== undefined).map((row) => {
+    ].filter((row): row is InvoiceRow => row !== undefined).map((row) => {
       const rawCachedTokens = turnIndex > 0 ? previousRows.get(row.id) ?? 0 : 0;
-      const cachedTokens = Math.min(rawCachedTokens, row.tokens);
-      const inputTokens = Math.max(row.tokens - cachedTokens, 0);
+      const cachedTokens = Math.min(rawCachedTokens, row.inputTokens);
+      const uncachedInputTokens = Math.max(row.inputTokens - cachedTokens, 0);
       return {
         ...row,
         cachedTokens,
-        aiCredits: estimateMixedInputAiCredits(inputTokens, cachedTokens, selectedModel),
+        aiCredits: estimateMixedInputAiCredits(uncachedInputTokens, cachedTokens, selectedModel),
       };
+    });
+    const assistantOutputTokens = tokenize(assistantResponseForTurn(turnIndex)).length;
+    rows.push({
+      id: "assistant",
+      label: "Assistant response",
+      inputTokens: 0,
+      cachedTokens: 0,
+      outputTokens: assistantOutputTokens,
+      aiCredits: estimateOutputAiCredits(assistantOutputTokens, selectedModel),
+      active: true,
     });
 
     return {
       rows,
       total: rows.reduce(
         (total, row) => ({
-          tokens: total.tokens + row.tokens,
+          inputTokens: total.inputTokens + row.inputTokens,
           cachedTokens: total.cachedTokens + row.cachedTokens,
+          outputTokens: total.outputTokens + row.outputTokens,
           aiCredits: total.aiCredits + row.aiCredits,
         }),
-        { tokens: 0, cachedTokens: 0, aiCredits: 0 },
+        emptyInvoiceTotal(),
       ),
     };
   }
@@ -350,8 +386,9 @@ export default function App() {
       return {
         id: section.id,
         label: section.label,
-        tokens: tokenCount,
+        inputTokens: tokenCount,
         cachedTokens: 0,
+        outputTokens: 0,
         aiCredits: estimateInputAiCredits(tokenCount, selectedModel),
         active: true,
       };
@@ -543,6 +580,10 @@ export default function App() {
                   <dd>${formatNumber(selectedModel.pricing.cachedInputPerMillionTokensUsd)}/1M</dd>
                 </div>
                 <div>
+                  <dt>output</dt>
+                  <dd>${formatNumber(selectedModel.pricing.outputPerMillionTokensUsd)}/1M</dd>
+                </div>
+                <div>
                   <dt>credits</dt>
                   <dd>{formatAiCredits(inputAiCreditRate)}/1M</dd>
                 </div>
@@ -696,7 +737,7 @@ export default function App() {
 
           <div className="controls-row">
             <p className="cost-note">
-              Estimated prompt input: {formatAiCredits(estimatedInputAiCredits)} AI credits ({formatCurrency(estimatedInputCost)}) at current Copilot usage-based pricing.
+              Estimated selected turn: {formatAiCredits(estimatedInputAiCredits)} input credits ({formatCurrency(estimatedInputCost)}) and {formatAiCredits(selectedOutputAiCredits)} output credits ({formatCurrency(selectedOutputCost)}).
             </p>
           </div>
 
@@ -763,14 +804,15 @@ export default function App() {
             </div>
             <div
               className={`invoice-slide invoice-slide-${invoiceDirection > 0 ? "next" : invoiceDirection < 0 ? "previous" : "static"}`}
-              key={`${selectedTurnIndex}-${invoiceDirection}-${invoiceRows.map((row) => `${row.id}:${row.tokens}:${row.cachedTokens}`).join("|")}`}
+              key={`${selectedTurnIndex}-${invoiceDirection}-${invoiceRows.map((row) => `${row.id}:${row.inputTokens}:${row.cachedTokens}:${row.outputTokens}`).join("|")}`}
             >
               <table className="invoice-table">
                 <thead>
                   <tr>
                     <th scope="col">Item</th>
-                    <th scope="col">Tokens</th>
+                    <th scope="col">Input</th>
                     <th scope="col">Cached</th>
+                    <th scope="col">Output</th>
                     <th scope="col">Credits</th>
                   </tr>
                 </thead>
@@ -778,8 +820,9 @@ export default function App() {
                   {invoiceRows.map((row) => (
                     <tr className={row.active ? "" : "inactive"} key={row.id}>
                       <th scope="row">{row.label}</th>
-                      <td>{formatNumber(row.tokens)}</td>
+                      <td>{formatNumber(row.inputTokens)}</td>
                       <td>{formatNumber(row.cachedTokens)}</td>
+                      <td>{formatNumber(row.outputTokens)}</td>
                       <td>{formatAiCredits(row.aiCredits)}</td>
                     </tr>
                   ))}
@@ -787,14 +830,16 @@ export default function App() {
                 <tfoot>
                   <tr>
                     <th scope="row">Turn total</th>
-                    <td>{formatNumber(selectedInvoicePage.total.tokens)}</td>
+                    <td>{formatNumber(selectedInvoicePage.total.inputTokens)}</td>
                     <td>{formatNumber(selectedInvoicePage.total.cachedTokens)}</td>
+                    <td>{formatNumber(selectedInvoicePage.total.outputTokens)}</td>
                     <td>{formatAiCredits(selectedInvoicePage.total.aiCredits)}</td>
                   </tr>
                   <tr className="conversation-total">
                     <th scope="row">Conversation total</th>
-                    <td>{formatNumber(conversationTotals.tokens)}</td>
+                    <td>{formatNumber(conversationTotals.inputTokens)}</td>
                     <td>{formatNumber(conversationTotals.cachedTokens)}</td>
+                    <td>{formatNumber(conversationTotals.outputTokens)}</td>
                     <td>{formatAiCredits(conversationTotals.aiCredits)}</td>
                   </tr>
                 </tfoot>
@@ -803,7 +848,7 @@ export default function App() {
           </div>
 
           <p className="help-text">
-            Counts and input AI credits are deterministic in this app and intended for planning. Conversation totals sum per-turn billing impact across repeated prompts, including cached-token estimates; production tokenizers, output tokens, and cached-token billing may differ by provider, model version, and interaction.
+            Counts and AI credits are deterministic in this app and intended for planning. Conversation totals sum per-turn billing impact across repeated prompt input, cached input, and assistant output; production tokenizers and cached-token billing may differ by provider, model version, and interaction.
           </p>
         </aside>
       </section>

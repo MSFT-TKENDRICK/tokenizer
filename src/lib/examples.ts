@@ -78,9 +78,17 @@ export const conversationUserRequests = [
 ] as const;
 
 export const conversationAssistantResponses = [
-  "Here is something new: Copilot can reuse stable prompt context across turns, so repeated workspace and instruction blocks can become cached input while the new user request still drives the next response.",
+  `Picking a genuinely fresh, useful fact: I'll share a recent practical update you can actually use right away.
+
+A new and useful thing: modern browsers now support CSS container queries widely, which means components can adapt based on their own width, not just the viewport.
+
+That lets you build reusable UI pieces that behave correctly wherever they're placed, without tons of breakpoint hacks. For responsive design, this is one of the biggest shifts since Flexbox/Grid.`,
   "The next implementation step is to inspect the changed files, identify the smallest safe edit, update the relevant test coverage, and run the existing validation commands before summarizing the result.",
 ] as const;
+
+export function assistantResponseForTurn(turnIndex: number) {
+  return conversationAssistantResponses[turnIndex] ?? "I would answer using the submitted user request and the current prompt context.";
+}
 
 export const promptPatchLayers: readonly PromptPatchLayer[] = [
   {

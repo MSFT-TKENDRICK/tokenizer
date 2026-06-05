@@ -354,6 +354,14 @@ export function estimateInputAiCredits(tokenCount: number, model: CopilotModel) 
   return usdToAiCredits(estimateInputUsd(tokenCount, model));
 }
 
+export function estimateOutputUsd(tokenCount: number, model: CopilotModel) {
+  return (tokenCount / 1_000_000) * model.pricing.outputPerMillionTokensUsd;
+}
+
+export function estimateOutputAiCredits(tokenCount: number, model: CopilotModel) {
+  return usdToAiCredits(estimateOutputUsd(tokenCount, model));
+}
+
 function requireModel(modelId: string) {
   const model = COPILOT_MODELS.find((candidate) => candidate.id === modelId);
   if (!model) {

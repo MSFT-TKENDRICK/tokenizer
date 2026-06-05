@@ -55,6 +55,7 @@ test("renders the tokenizer workspace with the default chat view", async ({ page
   await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("auto");
   await expect(page.getByLabel("Model pricing metadata")).toContainText("450/1M");
   await expect(page.getByLabel("Model pricing metadata")).toContainText("$0.5/1M");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("$27/1M");
   await expect(page.getByLabel("Model pricing metadata")).not.toContainText("legacy");
   await expect(page.getByLabel("Prompt context controls")).toBeVisible();
   await page.getByRole("tab", { name: "Plaintext" }).click();
@@ -65,6 +66,8 @@ test("renders the tokenizer workspace with the default chat view", async ({ page
   await expect(page.locator(".plaintext-highlight")).toContainText("</system>");
   expect(await page.locator(".plaintext-highlight").textContent()).toBe(basePrompt);
   await expect(page.getByLabel("Prompt cost invoice")).toContainText("System prompt");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Input");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Output");
   await expect(page.getByLabel("Prompt cost invoice")).toContainText("Custom instructions");
   await expect(page.getByLabel("Prompt cost invoice")).toContainText("Tools");
   await expect(page.getByLabel("Prompt cost invoice")).toContainText("Cached");
@@ -154,6 +157,7 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(textarea).toHaveValue(/<attachments>/);
   await expect(textarea).toHaveValue(/<context>/);
   await expect(textarea).toHaveValue(/tell me something new/);
+  await expect(textarea).not.toHaveValue(/<assistant|<assistantResponse|modern browsers now support CSS container queries/);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
   await expect(submitButton).toBeEnabled();
   await expect(chatInput).toHaveValue(conversationUserRequests[1]);
@@ -276,7 +280,7 @@ test("model selector changes context copy and meter width", async ({ page }) => 
 
   await expect(page.locator(".context-label")).toContainText("Auto");
   await expect(page.getByText(/tokens remaining in a 128,000 token window\./)).toBeVisible();
-  await expect(page.getByText(/Estimated prompt input: .* AI credits .* at current Copilot usage-based pricing\./)).toBeVisible();
+  await expect(page.getByText(/Estimated selected turn: .* input credits .* and .* output credits .*\./)).toBeVisible();
 
   await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4");
   await expect(page.locator(".context-label")).toContainText("GPT-5.4");
@@ -301,10 +305,14 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   expect(await invoiceTokenValue(page, "Custom instructions")).toBe(0);
   expect(await invoiceTokenValue(page, "Tools")).toBe(0);
   expect(await invoiceTokenValue(page, "Turn total")).toBe(0);
+  expect(await invoiceOutputValue(page, "Turn total")).toBe(0);
 
   await page.getByRole("button", { name: "Submit user message" }).click();
   const totalTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
+  await expect(page.getByLabel("Chat transcript")).toContainText(conversationAssistantResponses[0]);
   expect(await invoiceTokenValue(page, "System prompt")).toBeGreaterThan(0);
+  expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
+  expect(await invoiceOutputValue(page, "Turn total")).toBe(await invoiceOutputValue(page, "Assistant response"));
   expect(await invoiceTokenValue(page, "Turn total")).toBe(totalTokens);
 
   await page.getByRole("button", { name: /Instructions context/ }).click();
@@ -313,6 +321,7 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   await expect(invoice).toContainText("Tools");
   expect(await invoiceTokenValue(page, "Custom instructions")).toBeGreaterThan(0);
   expect(await invoiceTokenValue(page, "Tools")).toBeGreaterThan(0);
+  expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceTokenValue(page, "Turn total")).toBe(
     Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, "")),
   );
@@ -332,13 +341,17 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
   const secondTurnTotal = await invoiceTokenValue(page, "Turn total");
   expect(secondTurnTotal).toBeGreaterThan(firstTurnTotal);
   expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
+  expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
+  expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceTokenValue(page, "Conversation total")).toBe(firstTurnTotal + secondTurnTotal);
+  expect(await invoiceOutputValue(page, "Conversation total")).toBeGreaterThan(await invoiceOutputValue(page, "Turn total"));
 
   await page.getByRole("button", { name: "Previous conversation turn" }).click();
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 2");
   await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-previous/);
   expect(await invoiceTokenValue(page, "Turn total")).toBe(firstTurnTotal);
   expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
+  expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
   await expect(page.getByLabel("Chat message input")).toHaveValue("");
   await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
 
@@ -346,6 +359,7 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
   await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-next/);
   expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
+  expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
 });
 
 test("mobile viewport keeps visible features usable", async ({ page }) => {
@@ -386,8 +400,12 @@ async function invoiceCachedValue(page: Page, label: string) {
   return invoiceNumberValue(page, label, 1);
 }
 
-async function invoiceCreditValue(page: Page, label: string) {
+async function invoiceOutputValue(page: Page, label: string) {
   return invoiceNumberValue(page, label, 2);
+}
+
+async function invoiceCreditValue(page: Page, label: string) {
+  return invoiceNumberValue(page, label, 3);
 }
 
 async function invoiceNumberValue(page: Page, label: string, columnIndex: number) {
