@@ -149,7 +149,7 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(page.getByLabel("Chat transcript")).toContainText(conversationAssistantResponses[0]);
   await expect(page.getByLabel("Chat transcript")).not.toContainText("<workspace_info>");
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]])));
+  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]], { includeAssistantResponses: true })));
   await expect(page.locator(".plaintext-highlight")).toContainText("userRequest");
   await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
   await expect(textarea).toHaveValue(/<environment_info>/);
@@ -157,7 +157,8 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(textarea).toHaveValue(/<attachments>/);
   await expect(textarea).toHaveValue(/<context>/);
   await expect(textarea).toHaveValue(/tell me something new/);
-  await expect(textarea).not.toHaveValue(/<assistant|<assistantResponse|modern browsers now support CSS container queries/);
+  await expect(textarea).toHaveValue(/modern browsers now support CSS container queries/);
+  await expect(textarea).not.toHaveValue(/<assistant|<assistantResponse/);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
   await expect(submitButton).toBeEnabled();
   await expect(chatInput).toHaveValue(conversationUserRequests[1]);
@@ -167,22 +168,25 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
 
   await submitButton.click();
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests)));
+  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
   await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
   await expect(textarea).toHaveValue(/Repository structure includes api\/src\/routes/);
+  await expect(textarea).toHaveValue(/modern browsers now support CSS container queries/);
   await expect(textarea).toHaveValue(/Using the prior workspace context, explain the next implementation step\./);
+  await expect(textarea).toHaveValue(/inspect the changed files, identify the smallest safe edit/);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
   await expect(submitButton).toBeDisabled();
   expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceCreditValue(page, "Conversation total")).toBeGreaterThanOrEqual(await invoiceCreditValue(page, "Turn total"));
 
   await page.getByRole("button", { name: /Workspace context/ }).click();
-  await expect(textarea).toHaveValue(composePrompt(["workspace"], composeConversationRequest(conversationUserRequests)));
+  await expect(textarea).toHaveValue(composePrompt(["workspace"], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(
     Number((await chatImpactMetric(page, "tokens").textContent())?.replace(/,/g, "")),
   );
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toContainText("workspace_info");
+  await expect(page.getByLabel("Token text view")).toContainText("modern browsers now support CSS container queries");
 });
 
 test("XML syntax highlighting preserves readonly closing tags while scrolling", async ({ page }) => {
@@ -220,7 +224,7 @@ test("Clear empties chat input and Restore sample restores the base prompt", asy
   await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
   await page.getByRole("button", { name: "Submit user message" }).click();
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]])));
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]], { includeAssistantResponses: true })));
   await expect(page.getByRole("button", { name: "Submit user message" })).toBeEnabled();
 });
 
@@ -313,7 +317,7 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   expect(await invoiceTokenValue(page, "System prompt")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Turn total")).toBe(await invoiceOutputValue(page, "Assistant response"));
-  expect(await invoiceTokenValue(page, "Turn total")).toBe(totalTokens);
+  expect(await invoiceTokenValue(page, "Turn total")).toBeLessThan(totalTokens);
 
   await page.getByRole("button", { name: /Instructions context/ }).click();
   await page.getByRole("button", { name: /Tools context/ }).click();
@@ -322,7 +326,7 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   expect(await invoiceTokenValue(page, "Custom instructions")).toBeGreaterThan(0);
   expect(await invoiceTokenValue(page, "Tools")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
-  expect(await invoiceTokenValue(page, "Turn total")).toBe(
+  expect(await invoiceTokenValue(page, "Turn total")).toBeLessThan(
     Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, "")),
   );
 });

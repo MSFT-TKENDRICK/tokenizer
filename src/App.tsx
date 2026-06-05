@@ -238,7 +238,10 @@ export default function App() {
   const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
   const selectedTurnIndex = conversationTurns.length === 0 ? -1 : Math.min(invoicePageIndex, conversationTurns.length - 1);
   const activeConversationRequest = useMemo(
-    () => composeConversationRequest(selectedTurnIndex >= 0 ? conversationTurns.slice(0, selectedTurnIndex + 1) : []),
+    () => composeConversationRequest(
+      selectedTurnIndex >= 0 ? conversationTurns.slice(0, selectedTurnIndex + 1) : [],
+      { includeAssistantResponses: true },
+    ),
     [conversationTurns, selectedTurnIndex],
   );
   const promptSections = useMemo(
@@ -249,7 +252,7 @@ export default function App() {
   const tokens = useMemo(() => tokenize(text), [text]);
   const draftUserMessageTokens = useMemo(() => tokenize(draftUserMessage), [draftUserMessage]);
   const summary = useMemo(() => summarizeTokens(text, tokens, selectedModel), [text, tokens, selectedModel]);
-  const displayedTokens = tokens.slice(0, 500);
+  const displayedTokens = tokens;
   const contextPercent = summary.model?.contextPercentage ?? 0;
   const remainingContext = Math.max(selectedModel.contextWindow - summary.tokens, 0);
   const estimatedInputCost = estimateInputUsd(summary.tokens, selectedModel);
@@ -461,7 +464,7 @@ export default function App() {
 
     const nextTurns = [...conversationTurns, draftUserMessage];
     const nextTurnIndex = nextTurns.length - 1;
-    const nextConversationRequest = composeConversationRequest(nextTurns);
+    const nextConversationRequest = composeConversationRequest(nextTurns, { includeAssistantResponses: true });
     const nextText = composePrompt(selectedLayerIds, nextConversationRequest);
     setConversationTurns(nextTurns);
     setDraftUserMessage(conversationUserRequests[nextTurns.length] ?? "");

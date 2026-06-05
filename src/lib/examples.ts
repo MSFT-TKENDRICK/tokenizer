@@ -222,14 +222,15 @@ export function composePrompt(selectedLayerIds: readonly string[], userRequest =
     .join("\n\n");
 }
 
-export function composeConversationRequest(messages: readonly string[]) {
+export function composeConversationRequest(messages: readonly string[], options: { includeAssistantResponses?: boolean } = {}) {
   if (messages.length === 0) {
     return "";
   }
 
-  return messages.map((message) => [
+  return messages.map((message, index) => [
     userPromptOneRaw,
     replaceTaggedContent(userPromptTwoRaw, "userRequest", message),
+    ...(options.includeAssistantResponses ? [assistantResponseForTurn(index)] : []),
   ].join("\n\n")).join("\n\n");
 }
 
