@@ -269,6 +269,14 @@ function ArrowRightIcon() {
   );
 }
 
+function RefreshIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path d="M13 2.5V6H9.5l1.4-1.4A4.5 4.5 0 1 0 12.5 8h1A5.5 5.5 0 1 1 11.6 3.9L13 2.5Z" />
+    </svg>
+  );
+}
+
 export default function App() {
   const plainEditorRef = useRef<HTMLTextAreaElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
@@ -502,17 +510,6 @@ export default function App() {
     const nextText = composePrompt([], "");
     setSelectedLayerIds([]);
     setDraftUserMessage(defaultUserRequest);
-    setConversationTurns([]);
-    setInvoicePageIndex(0);
-    setInvoiceDirection(0);
-    setViewMode("chat");
-    scrollPlainEditorTo(nextText);
-  }
-
-  function clearPrompt() {
-    const nextText = composePrompt([], "");
-    setSelectedLayerIds([]);
-    setDraftUserMessage("");
     setConversationTurns([]);
     setInvoicePageIndex(0);
     setInvoiceDirection(0);
@@ -796,9 +793,9 @@ export default function App() {
           </div>
 
           <div className="editor-actions">
-            <button className="ghost-button" type="button" onClick={clearPrompt}>Clear</button>
-            <button className="primary-button" type="button" onClick={resetPrompt}>
-              Restore sample
+            <button className="reset-button" type="button" onClick={resetPrompt} aria-label="Reset simulation" title="Reset simulation">
+              <RefreshIcon />
+              <span>Reset simulation</span>
             </button>
           </div>
 

@@ -222,23 +222,25 @@ test("XML syntax highlighting preserves readonly closing tags while scrolling", 
   await expect(page.locator(".plaintext-highlight")).toContainText("</userRequest>");
 });
 
-test("Clear empties chat input and Restore sample restores the base prompt", async ({ page }) => {
-  await page.getByRole("button", { name: "Clear" }).click();
-  await expect(page.getByLabel("Chat message input")).toHaveValue("");
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], ""));
-  await expect(page.getByRole("button", { name: "Submit user message" })).toBeDisabled();
-  await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
-  await expect(chatImpactMetric(page, "AI credits")).toHaveText("0");
-  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBe(0);
+test("Reset simulation restores the sample start state", async ({ page }) => {
+  await expect(page.getByRole("button", { name: "Clear" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Restore sample" })).toHaveCount(0);
+  const resetButton = page.getByRole("button", { name: "Reset simulation" });
+  await expect(resetButton).toBeVisible();
+  await expect(resetButton.locator("svg")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Tokens" }).click();
-  await expect(page.getByLabel("Token text view")).not.toContainText("userRequest");
+  await page.getByRole("button", { name: "Submit user message" }).click();
+  await expect(page.getByLabel("Chat transcript")).toContainText(conversationAssistantResponses[0]);
+  await page.getByRole("button", { name: /Workspace context/ }).click();
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
 
-  await page.getByRole("button", { name: "Restore sample" }).click();
+  await resetButton.click();
+  await expect(page.getByLabel("Chat transcript")).toHaveText("");
+  await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 0 of 0");
+  await expect(page.getByRole("button", { name: /Workspace context/ })).toHaveAttribute("aria-pressed", "false");
   await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(pendingFirstPrompt);
-  await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
   await page.getByRole("button", { name: "Submit user message" }).click();
   await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]], { includeAssistantResponses: true })));
@@ -431,10 +433,12 @@ test("mobile viewport keeps visible features usable", async ({ page }) => {
   await expect(page.getByLabel("Chat transcript")).toBeVisible();
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reset simulation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reset simulation" }).locator("svg")).toBeVisible();
   await expect(page.getByRole("button", { name: /Workspace context/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Workspace context/ }).locator("svg")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Restore sample" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Clear" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Restore sample" })).toHaveCount(0);
   await expect(page.getByLabel("Tokenizer statistics")).toBeVisible();
   await expect(page.locator(".token-segment").first()).toBeVisible();
 
