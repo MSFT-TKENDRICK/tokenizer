@@ -14,16 +14,18 @@ import {
   type CopilotModelFamilyId,
 } from "./lib/copilotModels";
 import {
+  composeConversationRequest,
   composePrompt,
+  conversationUserRequests,
   createPatchDiff,
   defaultUserRequest,
   getPromptSections,
   promptPatchLayers,
-  submittedUserRequest,
 } from "./lib/examples";
 import "./App.css";
 
 type ViewMode = "plain" | "tokens" | "ids";
+type InvoiceDirection = -1 | 0 | 1;
 
 const MODEL_GROUPS: readonly { id: CopilotModelFamilyId; label: string }[] = [
   { id: "anthropic", label: "Copilot · Claude" },
@@ -51,6 +53,15 @@ function formatAiCredits(value: number) {
     maximumFractionDigits,
     minimumFractionDigits: value > 0 && value < 0.0001 ? 6 : 0,
   }).format(value);
+}
+
+function estimateCachedInputAiCredits(tokenCount: number, model: { pricing: { cachedInputPerMillionTokensUsd: number } }) {
+  return ((tokenCount / 1_000_000) * model.pricing.cachedInputPerMillionTokensUsd) / 0.01;
+}
+
+function estimateMixedInputAiCredits(inputTokens: number, cachedTokens: number, model: { pricing: { inputPerMillionTokensUsd: number; cachedInputPerMillionTokensUsd: number } }) {
+  const inputCredits = ((inputTokens / 1_000_000) * model.pricing.inputPerMillionTokensUsd) / 0.01;
+  return inputCredits + estimateCachedInputAiCredits(cachedTokens, model);
 }
 
 function visibleTokenText(token: Token) {
@@ -170,22 +181,44 @@ function SubmitIcon() {
   );
 }
 
+function ArrowLeftIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path d="M10.7 3.3 6 8l4.7 4.7-.7.7L4.6 8 10 2.6l.7.7Z" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path d="m5.3 12.7.7.7L11.4 8 6 2.6l-.7.7L10 8l-4.7 4.7Z" />
+    </svg>
+  );
+}
+
 export default function App() {
   const plainEditorRef = useRef<HTMLTextAreaElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [draftUserMessage, setDraftUserMessage] = useState(defaultUserRequest);
-  const [submittedUserMessage, setSubmittedUserMessage] = useState("");
-  const [hasSubmittedUserMessage, setHasSubmittedUserMessage] = useState(false);
+  const [conversationTurns, setConversationTurns] = useState<string[]>([]);
+  const [invoicePageIndex, setInvoicePageIndex] = useState(0);
+  const [invoiceDirection, setInvoiceDirection] = useState<InvoiceDirection>(0);
   const [selectedModelId, setSelectedModelId] = useState("auto");
   const [viewMode, setViewMode] = useState<ViewMode>("plain");
   const [plainScrollTop, setPlainScrollTop] = useState(0);
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
   const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
+  const selectedTurnIndex = conversationTurns.length === 0 ? -1 : Math.min(invoicePageIndex, conversationTurns.length - 1);
+  const activeConversationRequest = useMemo(
+    () => composeConversationRequest(selectedTurnIndex >= 0 ? conversationTurns.slice(0, selectedTurnIndex + 1) : []),
+    [conversationTurns, selectedTurnIndex],
+  );
   const promptSections = useMemo(
-    () => getPromptSections(selectedLayerIds, submittedUserMessage),
-    [selectedLayerIds, submittedUserMessage],
+    () => getPromptSections(selectedLayerIds, activeConversationRequest),
+    [selectedLayerIds, activeConversationRequest],
   );
   const text = useMemo(() => promptSections.map((section) => section.content).join("\n\n"), [promptSections]);
   const tokens = useMemo(() => tokenize(text), [text]);
@@ -199,34 +232,65 @@ export default function App() {
   const estimatedUserMessageCost = estimateInputUsd(draftUserMessageTokens.length, selectedModel);
   const estimatedUserMessageAiCredits = estimateInputAiCredits(draftUserMessageTokens.length, selectedModel);
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
-  const invoiceRows = useMemo(() => {
-    const activeRows = new Map(
-      promptSections.map((section, index) => {
-        const billedContent = index === 0 ? section.content : `\n\n${section.content}`;
-        const tokenCount = tokenize(billedContent).length;
-        return [
-          section.id,
-          {
-            id: section.id,
-            label: section.label,
-            tokens: tokenCount,
-            aiCredits: estimateInputAiCredits(tokenCount, selectedModel),
-            active: true,
-          },
-        ];
+  const invoicePages = useMemo(
+    () => conversationTurns.map((_, index) => buildInvoicePage(index)),
+    [conversationTurns, selectedLayerIds, selectedModel],
+  );
+  const selectedInvoicePage = selectedTurnIndex >= 0 ? invoicePages[selectedTurnIndex] : buildInvoicePage(-1);
+  const invoiceRows = selectedInvoicePage.rows;
+  const conversationTotals = useMemo(
+    () => invoicePages.reduce(
+      (total, page) => ({
+        tokens: total.tokens + page.total.tokens,
+        cachedTokens: total.cachedTokens + page.total.cachedTokens,
+        aiCredits: total.aiCredits + page.total.aiCredits,
       }),
-    );
+      { tokens: 0, cachedTokens: 0, aiCredits: 0 },
+    ),
+    [invoicePages],
+  );
+  const invoicePageCount = conversationTurns.length;
+  const canNavigateInvoiceBack = selectedTurnIndex > 0;
+  const canNavigateInvoiceForward = selectedTurnIndex >= 0 && selectedTurnIndex < conversationTurns.length - 1;
+  const canSubmitUserMessage = draftUserMessage.trim().length > 0;
 
+  function buildInvoicePage(turnIndex: number) {
     const optionalRows = promptPatchLayers.map((layer) => ({
       id: layer.id,
       label: layer.id === "instructions" ? "Custom instructions" : layer.name,
     }));
 
-    return [
+    if (turnIndex < 0) {
+      const rows = [
+        { id: "system", label: "System prompt" },
+        ...optionalRows,
+        { id: "user", label: "User message" },
+      ].map((row) => ({
+        ...row,
+        tokens: 0,
+        cachedTokens: 0,
+        aiCredits: 0,
+        active: false,
+      }));
+
+      return {
+        rows,
+        total: { tokens: 0, cachedTokens: 0, aiCredits: 0 },
+      };
+    }
+
+    const pageConversationRequest = composeConversationRequest(turnIndex >= 0 ? conversationTurns.slice(0, turnIndex + 1) : []);
+    const previousConversationRequest = composeConversationRequest(turnIndex > 0 ? conversationTurns.slice(0, turnIndex) : []);
+    const pageRows = buildInvoiceRows(getPromptSections(selectedLayerIds, pageConversationRequest));
+    const previousRows = new Map(buildInvoiceRows(getPromptSections(selectedLayerIds, previousConversationRequest)).map((row) => [row.id, row.tokens]));
+
+    const activeRows = new Map(pageRows.map((row) => [row.id, row]));
+    const rows = [
       activeRows.get("system"),
       ...optionalRows.map((row) => activeRows.get(row.id) ?? {
         ...row,
         tokens: 0,
+        cachedTokens: 0,
         aiCredits: 0,
         active: false,
       }),
@@ -234,6 +298,7 @@ export default function App() {
         id: "user",
         label: "User message",
         tokens: 0,
+        cachedTokens: 0,
         aiCredits: 0,
         active: false,
       },
@@ -241,10 +306,47 @@ export default function App() {
       id: string;
       label: string;
       tokens: number;
+      cachedTokens: number;
       aiCredits: number;
       active: boolean;
-    } => row !== undefined);
-  }, [promptSections, selectedModel]);
+    } => row !== undefined).map((row) => {
+      const rawCachedTokens = turnIndex > 0 ? previousRows.get(row.id) ?? 0 : 0;
+      const cachedTokens = Math.min(rawCachedTokens, row.tokens);
+      const inputTokens = Math.max(row.tokens - cachedTokens, 0);
+      return {
+        ...row,
+        cachedTokens,
+        aiCredits: estimateMixedInputAiCredits(inputTokens, cachedTokens, selectedModel),
+      };
+    });
+
+    return {
+      rows,
+      total: rows.reduce(
+        (total, row) => ({
+          tokens: total.tokens + row.tokens,
+          cachedTokens: total.cachedTokens + row.cachedTokens,
+          aiCredits: total.aiCredits + row.aiCredits,
+        }),
+        { tokens: 0, cachedTokens: 0, aiCredits: 0 },
+      ),
+    };
+  }
+
+  function buildInvoiceRows(sections: ReturnType<typeof getPromptSections>) {
+    return sections.map((section, index) => {
+      const billedContent = index === 0 ? section.content : `\n\n${section.content}`;
+      const tokenCount = tokenize(billedContent).length;
+      return {
+        id: section.id,
+        label: section.label,
+        tokens: tokenCount,
+        cachedTokens: 0,
+        aiCredits: estimateInputAiCredits(tokenCount, selectedModel),
+        active: true,
+      };
+    });
+  }
 
   useEffect(() => {
     chatInputRef.current?.focus({ preventScroll: true });
@@ -266,7 +368,7 @@ export default function App() {
   }
 
   function applyLayers(nextLayerIds: string[], focusMarker?: string) {
-    const nextText = composePrompt(nextLayerIds, submittedUserMessage);
+    const nextText = composePrompt(nextLayerIds, activeConversationRequest);
     setSelectedLayerIds(nextLayerIds);
     setViewMode("plain");
     scrollPlainEditorTo(nextText, focusMarker);
@@ -286,8 +388,9 @@ export default function App() {
     const nextText = composePrompt([], "");
     setSelectedLayerIds([]);
     setDraftUserMessage(defaultUserRequest);
-    setSubmittedUserMessage("");
-    setHasSubmittedUserMessage(false);
+    setConversationTurns([]);
+    setInvoicePageIndex(0);
+    setInvoiceDirection(0);
     setViewMode("plain");
     scrollPlainEditorTo(nextText);
   }
@@ -296,24 +399,39 @@ export default function App() {
     const nextText = composePrompt([], "");
     setSelectedLayerIds([]);
     setDraftUserMessage("");
-    setSubmittedUserMessage("");
-    setHasSubmittedUserMessage(false);
+    setConversationTurns([]);
+    setInvoicePageIndex(0);
+    setInvoiceDirection(0);
     setViewMode("plain");
     scrollPlainEditorTo(nextText);
   }
 
   function submitUserMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (hasSubmittedUserMessage) {
+    if (!canSubmitUserMessage) {
       return;
     }
 
-    const nextText = composePrompt(selectedLayerIds, submittedUserRequest);
-    setSubmittedUserMessage(submittedUserRequest);
-    setHasSubmittedUserMessage(true);
+    const nextTurns = [...conversationTurns, draftUserMessage];
+    const nextTurnIndex = nextTurns.length - 1;
+    const nextConversationRequest = composeConversationRequest(nextTurns);
+    const nextText = composePrompt(selectedLayerIds, nextConversationRequest);
+    setConversationTurns(nextTurns);
+    setDraftUserMessage(conversationUserRequests[nextTurns.length] ?? "");
+    setInvoicePageIndex(nextTurnIndex);
+    setInvoiceDirection(1);
     setViewMode("plain");
     scrollPlainEditorTo(nextText, "<userRequest>");
     chatInputRef.current?.focus({ preventScroll: true });
+  }
+
+  function navigateInvoice(direction: InvoiceDirection) {
+    if (direction === 0 || conversationTurns.length === 0) {
+      return;
+    }
+
+    setInvoiceDirection(direction);
+    setInvoicePageIndex((currentIndex) => Math.min(Math.max(currentIndex + direction, 0), conversationTurns.length - 1));
   }
 
   function marginalTokenDelta(layerId: string) {
@@ -321,7 +439,7 @@ export default function App() {
       ? selectedLayerIds.filter((id) => id !== layerId)
       : [...selectedLayerIds, layerId];
 
-    return tokenize(composePrompt(nextLayerIds, submittedUserMessage)).length - tokens.length;
+    return tokenize(composePrompt(nextLayerIds, activeConversationRequest)).length - tokens.length;
   }
 
   return (
@@ -519,8 +637,8 @@ export default function App() {
                 className="chat-submit"
                 type="submit"
                 aria-label="Submit user message"
-                title={hasSubmittedUserMessage ? "User message submitted" : "Submit user message"}
-                disabled={hasSubmittedUserMessage}
+                title={canSubmitUserMessage ? "Submit user message" : "No more sample messages"}
+                disabled={!canSubmitUserMessage}
               >
                 <SubmitIcon />
               </button>
@@ -593,34 +711,71 @@ export default function App() {
             </div>
           </dl>
 
-          <table className="invoice-table" aria-label="Prompt cost invoice">
-            <thead>
-              <tr>
-                <th scope="col">Item</th>
-                <th scope="col">Tokens</th>
-                <th scope="col">Credits</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoiceRows.map((row) => (
-                <tr className={row.active ? "" : "inactive"} key={row.id}>
-                  <th scope="row">{row.label}</th>
-                  <td>{formatNumber(row.tokens)}</td>
-                  <td>{formatAiCredits(row.aiCredits)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row">Total</th>
-                <td>{formatNumber(summary.tokens)}</td>
-                <td>{formatAiCredits(estimatedInputAiCredits)}</td>
-              </tr>
-            </tfoot>
-          </table>
+          <div className="invoice-panel" aria-label="Prompt cost invoice">
+            <div className="invoice-nav" aria-label="Conversation turn invoice navigation">
+              <button
+                aria-label="Previous conversation turn"
+                type="button"
+                onClick={() => navigateInvoice(-1)}
+                disabled={!canNavigateInvoiceBack}
+              >
+                <ArrowLeftIcon />
+              </button>
+              <span aria-live="polite">
+                {invoicePageCount === 0 ? "Turn 0 of 0" : `Turn ${selectedTurnIndex + 1} of ${invoicePageCount}`}
+              </span>
+              <button
+                aria-label="Next conversation turn"
+                type="button"
+                onClick={() => navigateInvoice(1)}
+                disabled={!canNavigateInvoiceForward}
+              >
+                <ArrowRightIcon />
+              </button>
+            </div>
+            <div
+              className={`invoice-slide invoice-slide-${invoiceDirection > 0 ? "next" : invoiceDirection < 0 ? "previous" : "static"}`}
+              key={`${selectedTurnIndex}-${invoiceDirection}-${invoiceRows.map((row) => `${row.id}:${row.tokens}:${row.cachedTokens}`).join("|")}`}
+            >
+              <table className="invoice-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Item</th>
+                    <th scope="col">Tokens</th>
+                    <th scope="col">Cached</th>
+                    <th scope="col">Credits</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoiceRows.map((row) => (
+                    <tr className={row.active ? "" : "inactive"} key={row.id}>
+                      <th scope="row">{row.label}</th>
+                      <td>{formatNumber(row.tokens)}</td>
+                      <td>{formatNumber(row.cachedTokens)}</td>
+                      <td>{formatAiCredits(row.aiCredits)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th scope="row">Turn total</th>
+                    <td>{formatNumber(selectedInvoicePage.total.tokens)}</td>
+                    <td>{formatNumber(selectedInvoicePage.total.cachedTokens)}</td>
+                    <td>{formatAiCredits(selectedInvoicePage.total.aiCredits)}</td>
+                  </tr>
+                  <tr className="conversation-total">
+                    <th scope="row">Conversation total</th>
+                    <td>{formatNumber(conversationTotals.tokens)}</td>
+                    <td>{formatNumber(conversationTotals.cachedTokens)}</td>
+                    <td>{formatAiCredits(conversationTotals.aiCredits)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
 
           <p className="help-text">
-            Counts and input AI credits are deterministic in this app and intended for planning. Production tokenizers, output tokens, and cached-token billing may differ by provider, model version, and interaction.
+            Counts and input AI credits are deterministic in this app and intended for planning. Conversation totals sum per-turn billing impact across repeated prompts, including cached-token estimates; production tokenizers, output tokens, and cached-token billing may differ by provider, model version, and interaction.
           </p>
         </aside>
       </section>

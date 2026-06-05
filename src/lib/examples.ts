@@ -64,7 +64,10 @@ tell me something new
 
 export const defaultUserRequest = extractTaggedContent(userPromptTwoRaw, "userRequest") ?? "tell me something new";
 
-export const submittedUserRequest = deriveSubmittedUserRequest(userPromptOneRaw, userPromptTwoRaw);
+export const conversationUserRequests = [
+  defaultUserRequest,
+  deriveFollowUpUserRequest(userPromptOneRaw, userPromptTwoRaw),
+] as const;
 
 export const promptPatchLayers: readonly PromptPatchLayer[] = [
   {
@@ -177,10 +180,13 @@ export function getPromptSections(selectedLayerIds: readonly string[], userReque
   ];
 
   if (userRequest.trim().length > 0) {
+    const trimmedUserRequest = userRequest.trim();
     sections.push({
       id: "user",
       label: "User message",
-      content: formatPromptXml(`<userRequest>
+      content: formatPromptXml(trimmedUserRequest.startsWith("<")
+        ? trimmedUserRequest
+        : `<userRequest>
 ${userRequest}
 </userRequest>`),
     });
@@ -193,6 +199,22 @@ export function composePrompt(selectedLayerIds: readonly string[], userRequest =
   return getPromptSections(selectedLayerIds, userRequest)
     .map((section) => section.content)
     .join("\n\n");
+}
+
+export function composeConversationRequest(messages: readonly string[]) {
+  if (messages.length === 0) {
+    return "";
+  }
+
+  return [
+    "<conversation>",
+    ...messages.flatMap((message, index) => [
+      `<userRequest turn="${index + 1}">`,
+      message,
+      "</userRequest>",
+    ]),
+    "</conversation>",
+  ].join("\n");
 }
 
 export function createPatchDiff(layer: PromptPatchLayer) {
@@ -240,15 +262,14 @@ function isOpeningTag(value: string) {
   return /^<[\w:-]+(?:\s+[^>]*)?>$/.test(value) && !value.endsWith("/>") && !value.includes("</");
 }
 
-function deriveSubmittedUserRequest(userPromptOne: string, userPromptTwo: string) {
+function deriveFollowUpUserRequest(userPromptOne: string, userPromptTwo: string) {
+  const workspace = extractTaggedContent(userPromptOne, "workspace_info") ?? stripCacheControl(userPromptOne);
+  const currentRequest = extractTaggedContent(userPromptTwo, "userRequest") ?? stripCacheControl(userPromptTwo);
   return [
-    "<previousUserMessage>",
-    stripCacheControl(userPromptOne).trim(),
-    "</previousUserMessage>",
+    "Using the prior workspace context, explain the next implementation step.",
     "",
-    "<currentUserMessage>",
-    stripCacheControl(userPromptTwo).trim(),
-    "</currentUserMessage>",
+    `<previousContext>${workspace.trim()}</previousContext>`,
+    `<previousRequest>${currentRequest.trim()}</previousRequest>`,
   ].join("\n");
 }
 

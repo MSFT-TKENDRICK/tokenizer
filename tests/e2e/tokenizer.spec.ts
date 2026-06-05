@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { composePrompt, defaultUserRequest, promptPatchLayers, submittedUserRequest } from "../../src/lib/examples";
+import { composeConversationRequest, composePrompt, conversationUserRequests, defaultUserRequest, promptPatchLayers } from "../../src/lib/examples";
 import { tokenize } from "../../src/lib/tokenizer";
 
 const basePrompt = composePrompt([], "");
@@ -55,7 +55,10 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByLabel("Prompt cost invoice")).toContainText("System prompt");
   await expect(page.getByLabel("Prompt cost invoice")).toContainText("Custom instructions");
   await expect(page.getByLabel("Prompt cost invoice")).toContainText("Tools");
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Total");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Cached");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Turn total");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Conversation total");
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 0 of 0");
   await expect(page.getByLabel("Selected context preview")).toContainText("No context added.");
   await expect(page.getByText("Diffs")).toHaveCount(0);
   await expect(page.getByText("Patch", { exact: true })).toHaveCount(0);
@@ -125,16 +128,27 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
   const submitButton = page.getByRole("button", { name: "Submit user message" });
   await submitButton.click();
-  await expect(textarea).toHaveValue(composePrompt([], submittedUserRequest));
-  await expect(page.locator(".plaintext-highlight")).toContainText("<userRequest>");
-  await expect(textarea).toHaveValue(/<previousUserMessage>/);
-  await expect(textarea).toHaveValue(/<currentUserMessage>/);
+  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]])));
+  await expect(page.locator(".plaintext-highlight")).toContainText("userRequest");
+  await expect(textarea).toHaveValue(/turn="1"/);
   await expect(textarea).toHaveValue(/tell me something new/);
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
+  await expect(submitButton).toBeEnabled();
+  await expect(chatInput).toHaveValue(conversationUserRequests[1]);
+  expect(await invoiceTokenValue(page, "Turn total")).toBeGreaterThan(0);
+  expect(await invoiceCachedValue(page, "Turn total")).toBe(0);
+
+  await submitButton.click();
+  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests)));
+  await expect(textarea).toHaveValue(/turn="2"/);
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
   await expect(submitButton).toBeDisabled();
+  expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
+  expect(await invoiceCreditValue(page, "Conversation total")).toBeGreaterThanOrEqual(await invoiceCreditValue(page, "Turn total"));
   await expect(chatInput).toBeFocused();
 
   await page.getByRole("button", { name: /Workspace context/ }).click();
-  await expect(textarea).toHaveValue(composePrompt(["workspace"], submittedUserRequest));
+  await expect(textarea).toHaveValue(composePrompt(["workspace"], composeConversationRequest(conversationUserRequests)));
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(
     Number((await chatImpactMetric(page, "tokens").textContent())?.replace(/,/g, "")),
   );
@@ -160,7 +174,7 @@ test("Clear empties chat input and Restore sample restores the base prompt", asy
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(page.getByLabel("Chat message input")).toHaveValue("");
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], ""));
-  await expect(page.getByRole("button", { name: "Submit user message" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Submit user message" })).toBeDisabled();
   await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
   await expect(chatImpactMetric(page, "AI credits")).toHaveText("0");
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(0);
@@ -173,8 +187,8 @@ test("Clear empties chat input and Restore sample restores the base prompt", asy
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
   await page.getByRole("button", { name: "Submit user message" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], submittedUserRequest));
-  await expect(page.getByRole("button", { name: "Submit user message" })).toBeDisabled();
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]])));
+  await expect(page.getByRole("button", { name: "Submit user message" })).toBeEnabled();
 });
 
 test("context layer buttons apply and remove prompt diffs", async ({ page }) => {
@@ -252,12 +266,16 @@ test("model selector changes context copy and meter width", async ({ page }) => 
 
 test("itemized invoice totals match prompt metrics", async ({ page }) => {
   const invoice = page.getByLabel("Prompt cost invoice");
-  const totalTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
 
-  expect(await invoiceTokenValue(page, "System prompt")).toBeGreaterThan(0);
+  expect(await invoiceTokenValue(page, "System prompt")).toBe(0);
   expect(await invoiceTokenValue(page, "Custom instructions")).toBe(0);
   expect(await invoiceTokenValue(page, "Tools")).toBe(0);
-  expect(await invoiceTokenValue(page, "Total")).toBe(totalTokens);
+  expect(await invoiceTokenValue(page, "Turn total")).toBe(0);
+
+  await page.getByRole("button", { name: "Submit user message" }).click();
+  const totalTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
+  expect(await invoiceTokenValue(page, "System prompt")).toBeGreaterThan(0);
+  expect(await invoiceTokenValue(page, "Turn total")).toBe(totalTokens);
 
   await page.getByRole("button", { name: /Instructions context/ }).click();
   await page.getByRole("button", { name: /Tools context/ }).click();
@@ -265,9 +283,35 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   await expect(invoice).toContainText("Tools");
   expect(await invoiceTokenValue(page, "Custom instructions")).toBeGreaterThan(0);
   expect(await invoiceTokenValue(page, "Tools")).toBeGreaterThan(0);
-  expect(await invoiceTokenValue(page, "Total")).toBe(
+  expect(await invoiceTokenValue(page, "Turn total")).toBe(
     Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, "")),
   );
+});
+
+test("conversation invoice pages navigate turn impact and cached totals", async ({ page }) => {
+  const submitButton = page.getByRole("button", { name: "Submit user message" });
+  await submitButton.click();
+  const firstTurnTotal = await invoiceTokenValue(page, "Turn total");
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
+  await expect(page.getByRole("button", { name: "Previous conversation turn" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Next conversation turn" })).toBeDisabled();
+
+  await submitButton.click();
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
+  await expect(submitButton).toBeDisabled();
+  const secondTurnTotal = await invoiceTokenValue(page, "Turn total");
+  expect(secondTurnTotal).toBeGreaterThan(firstTurnTotal);
+  expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
+  expect(await invoiceTokenValue(page, "Conversation total")).toBe(firstTurnTotal + secondTurnTotal);
+
+  await page.getByRole("button", { name: "Previous conversation turn" }).click();
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 2");
+  await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-previous/);
+  expect(await invoiceTokenValue(page, "Turn total")).toBe(firstTurnTotal);
+
+  await page.getByRole("button", { name: "Next conversation turn" }).click();
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
+  await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-next/);
 });
 
 test("mobile viewport keeps visible features usable", async ({ page }) => {
@@ -301,7 +345,19 @@ function chatImpactMetric(page: Page, label: string) {
 }
 
 async function invoiceTokenValue(page: Page, label: string) {
-  const text = await page.getByLabel("Prompt cost invoice").locator("tr", { hasText: label }).locator("td").first().textContent();
+  return invoiceNumberValue(page, label, 0);
+}
+
+async function invoiceCachedValue(page: Page, label: string) {
+  return invoiceNumberValue(page, label, 1);
+}
+
+async function invoiceCreditValue(page: Page, label: string) {
+  return invoiceNumberValue(page, label, 2);
+}
+
+async function invoiceNumberValue(page: Page, label: string, columnIndex: number) {
+  const text = await page.getByLabel("Prompt cost invoice").locator("tr", { hasText: label }).locator("td").nth(columnIndex).textContent();
   return Number(text?.replace(/,/g, "") ?? 0);
 }
 
