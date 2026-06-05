@@ -185,6 +185,11 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
     await submitButton.click();
     await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of ${turn}`);
   }
+  await expect(page.getByLabel("Chat transcript")).toContainText("Assistant response 5");
+  const chatScrollGap = await page.getByLabel("Chat transcript").evaluate(
+    (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
+  );
+  expect(chatScrollGap).toBeLessThanOrEqual(2);
   await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(/Summarize the final plan in a concise handoff\./);

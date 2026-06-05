@@ -273,6 +273,7 @@ function ArrowRightIcon() {
 export default function App() {
   const plainEditorRef = useRef<HTMLTextAreaElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const chatTranscriptRef = useRef<HTMLDivElement>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [draftUserMessage, setDraftUserMessage] = useState(defaultUserRequest);
   const [conversationTurns, setConversationTurns] = useState<string[]>([]);
@@ -452,6 +453,18 @@ export default function App() {
   useEffect(() => {
     chatInputRef.current?.focus({ preventScroll: true });
   }, []);
+
+  useEffect(() => {
+    if (viewMode !== "chat" || conversationTurns.length === 0) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      if (chatTranscriptRef.current) {
+        chatTranscriptRef.current.scrollTop = chatTranscriptRef.current.scrollHeight;
+      }
+    });
+  }, [conversationTurns.length, viewMode]);
 
   function scrollPlainEditorTo(textValue: string, marker?: string) {
     const markerIndex = marker ? textValue.indexOf(marker) : -1;
@@ -678,7 +691,7 @@ export default function App() {
               </div>
             </div>
             {viewMode === "chat" ? (
-              <div className="text-viewport chat-transcript" aria-label="Chat transcript" role="log" tabIndex={0}>
+              <div ref={chatTranscriptRef} className="text-viewport chat-transcript" aria-label="Chat transcript" role="log" tabIndex={0}>
                 {chatTranscript.map((message) => (
                   <article className={`chat-message chat-message-${message.role}`} key={message.id}>
                     <span className="chat-message-label">{message.label}</span>
