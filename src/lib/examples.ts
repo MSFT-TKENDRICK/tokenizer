@@ -46,7 +46,15 @@ Repository structure includes api/src/routes, frontend/src/components, specs/002
 </workspace_info>
 <userMemory>
 - When a user asks to exclude a file from gitignore rules, add or preserve a negation rule.
-</userMemory>`;
+</userMemory>
+<sessionMemory>
+Session memory (/memories/session/) is empty. No session notes have been created yet.
+</sessionMemory>
+<repoMemory>
+The following files exist in your repository memory (/memories/repo/). These are scoped to the current workspace. Use the memory tool to read them if needed.
+
+/memories/repo/improve-skill-self-optimization.md
+</repoMemory>`;
 
 const userPromptTwoRaw = `<attachments>
 <attachment id="Browser Pages">
@@ -63,8 +71,6 @@ tell me something new
 </userRequest>`;
 
 export const defaultUserRequest = extractTaggedContent(userPromptTwoRaw, "userRequest") ?? "tell me something new";
-
-const hiddenWorkspaceContext = extractTaggedContent(userPromptOneRaw, "workspace_info") ?? stripCacheControl(userPromptOneRaw);
 
 export const conversationUserRequests = [
   defaultUserRequest,
@@ -208,22 +214,10 @@ export function composeConversationRequest(messages: readonly string[]) {
     return "";
   }
 
-  return [
-    "<conversation>",
-    ...messages.flatMap((message, index) => [
-      ...(index > 0
-        ? [
-          `<context turn="${index + 1}">`,
-          hiddenWorkspaceContext.trim(),
-          "</context>",
-        ]
-        : []),
-      `<userRequest turn="${index + 1}">`,
-      message,
-      "</userRequest>",
-    ]),
-    "</conversation>",
-  ].join("\n");
+  return messages.map((message) => [
+    userPromptOneRaw,
+    replaceTaggedContent(userPromptTwoRaw, "userRequest", message),
+  ].join("\n\n")).join("\n\n");
 }
 
 export function createPatchDiff(layer: PromptPatchLayer) {
@@ -274,6 +268,11 @@ function isOpeningTag(value: string) {
 function extractTaggedContent(value: string, tagName: string) {
   const pattern = new RegExp(`<${tagName}>\\s*([\\s\\S]*?)\\s*<\\/${tagName}>`);
   return value.match(pattern)?.[1]?.trim();
+}
+
+function replaceTaggedContent(value: string, tagName: string, replacement: string) {
+  const pattern = new RegExp(`(<${tagName}>)[\\s\\S]*?(<\\/${tagName}>)`);
+  return value.replace(pattern, `$1\n${replacement}\n$2`);
 }
 
 function stripCacheControl(value: string) {

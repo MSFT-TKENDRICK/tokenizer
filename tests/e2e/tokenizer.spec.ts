@@ -130,7 +130,11 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await submitButton.click();
   await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]])));
   await expect(page.locator(".plaintext-highlight")).toContainText("userRequest");
-  await expect(textarea).toHaveValue(/turn="1"/);
+  await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
+  await expect(textarea).toHaveValue(/<environment_info>/);
+  await expect(textarea).toHaveValue(/<workspace_info>/);
+  await expect(textarea).toHaveValue(/<attachments>/);
+  await expect(textarea).toHaveValue(/<context>/);
   await expect(textarea).toHaveValue(/tell me something new/);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
   await expect(submitButton).toBeEnabled();
@@ -141,9 +145,9 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
 
   await submitButton.click();
   await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests)));
-  await expect(textarea).toHaveValue(/turn="2"/);
-  await expect(textarea).toHaveValue(/<context turn="2">/);
+  await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
   await expect(textarea).toHaveValue(/Repository structure includes api\/src\/routes/);
+  await expect(textarea).toHaveValue(/Using the prior workspace context, explain the next implementation step\./);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
   await expect(submitButton).toBeDisabled();
   expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
