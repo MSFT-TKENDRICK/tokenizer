@@ -169,7 +169,7 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
 
   await submitButton.click();
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
+  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests.slice(0, 2), { includeAssistantResponses: true })));
   await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
   await expect(textarea).toHaveValue(/Repository structure includes api\/src\/routes/);
   await expect(textarea).toHaveValue(/<assistantResponse>/);
@@ -177,9 +177,20 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(textarea).toHaveValue(/Using the prior workspace context, explain the next implementation step\./);
   await expect(textarea).toHaveValue(/inspect the changed files, identify the smallest safe edit/);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
-  await expect(submitButton).toBeDisabled();
+  await expect(submitButton).toBeEnabled();
+  await expect(chatInput).toHaveValue(conversationUserRequests[2]);
   expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceCreditValue(page, "Conversation total")).toBeGreaterThanOrEqual(await invoiceCreditValue(page, "Turn total"));
+
+  for (let turn = 3; turn <= conversationUserRequests.length; turn += 1) {
+    await submitButton.click();
+    await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of ${turn}`);
+  }
+  await page.getByRole("tab", { name: "Plaintext" }).click();
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/Summarize the final plan in a concise handoff\./);
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/Final plan: keep the chat transcript readable/);
+  await expect(submitButton).toBeDisabled();
 
   await page.getByRole("button", { name: /Workspace context/ }).click();
   await expect(textarea).toHaveValue(composePrompt(["workspace"], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
@@ -349,31 +360,40 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
   await expect(page.getByRole("button", { name: "Previous conversation turn" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Next conversation turn" })).toBeDisabled();
 
-  await submitButton.click();
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
+  for (let turn = 2; turn <= conversationUserRequests.length; turn += 1) {
+    await submitButton.click();
+    await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of ${turn}`);
+  }
   await expect(submitButton).toBeDisabled();
-  const secondTurnTotal = await invoiceTokenValue(page, "Turn total");
-  expect(secondTurnTotal).toBeGreaterThan(firstTurnTotal);
+  const fifthTurnTotal = await invoiceTokenValue(page, "Turn total");
+  expect(fifthTurnTotal).toBeGreaterThan(firstTurnTotal);
   expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
-  expect(await invoiceTokenValue(page, "Conversation total")).toBe(firstTurnTotal + secondTurnTotal);
+  expect(await invoiceTokenValue(page, "Conversation total")).toBeGreaterThan(firstTurnTotal + fifthTurnTotal);
   expect(await invoiceOutputValue(page, "Conversation total")).toBeGreaterThan(await invoiceOutputValue(page, "Turn total"));
 
   await page.getByRole("button", { name: "Previous conversation turn" }).click();
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 2");
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 4 of 5");
   await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-previous/);
-  expect(await invoiceTokenValue(page, "Turn total")).toBe(firstTurnTotal);
   expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
   await expect(page.getByLabel("Chat message input")).toHaveValue("");
   await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
 
-  await page.getByRole("button", { name: "Next conversation turn" }).click();
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
-  await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-next/);
+  for (let turn = 3; turn >= 1; turn -= 1) {
+    await page.getByRole("button", { name: "Previous conversation turn" }).click();
+    await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of 5`);
+  }
+  expect(await invoiceTokenValue(page, "Turn total")).toBe(firstTurnTotal);
   expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
+
+  for (let turn = 2; turn <= 5; turn += 1) {
+    await page.getByRole("button", { name: "Next conversation turn" }).click();
+    await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of 5`);
+  }
+  await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-next/);
 });
 
 test("mobile viewport keeps visible features usable", async ({ page }) => {

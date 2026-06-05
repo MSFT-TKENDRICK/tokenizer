@@ -75,6 +75,9 @@ export const defaultUserRequest = extractTaggedContent(userPromptTwoRaw, "userRe
 export const conversationUserRequests = [
   defaultUserRequest,
   "Using the prior workspace context, explain the next implementation step.",
+  "What files should I inspect first before changing code?",
+  "How would cached context change the cost profile on the next turn?",
+  "Summarize the final plan in a concise handoff.",
 ] as const;
 
 export const conversationAssistantResponses = [
@@ -84,6 +87,9 @@ A new and useful thing: modern browsers now support CSS container queries widely
 
 That lets you build reusable UI pieces that behave correctly wherever they’re placed, without tons of breakpoint hacks. For responsive design, this is one of the biggest shifts since Flexbox/Grid.`,
   "The next implementation step is to inspect the changed files, identify the smallest safe edit, update the relevant test coverage, and run the existing validation commands before summarizing the result.",
+  "Start with the files closest to the behavior: the React component that renders the prompt, the helper that composes the prompt examples, and the e2e spec that exercises the conversation flow. That keeps the investigation tied to the user-visible defect.",
+  "Cached context lowers the marginal cost of repeated prompt input, so stable system, workspace, instruction, and previous-turn context becomes cheaper on later turns. New user input and assistant output still add fresh billable tokens.",
+  "Final plan: keep the chat transcript readable, render the full XML-like prompt trace in Plaintext/Tokens/Token IDs, calculate input, cached input, and output separately, and use the invoice totals as the canonical summary metrics.",
 ] as const;
 
 export function assistantResponseForTurn(turnIndex: number) {
