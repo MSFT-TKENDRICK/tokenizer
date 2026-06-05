@@ -16,6 +16,7 @@ import {
 import {
   composeConversationRequest,
   composePrompt,
+  conversationAssistantResponses,
   conversationUserRequests,
   createPatchDiff,
   defaultUserRequest,
@@ -24,7 +25,7 @@ import {
 } from "./lib/examples";
 import "./App.css";
 
-type ViewMode = "plain" | "tokens" | "ids";
+type ViewMode = "chat" | "plain" | "tokens" | "ids";
 type InvoiceDirection = -1 | 0 | 1;
 
 const MODEL_GROUPS: readonly { id: CopilotModelFamilyId; label: string }[] = [
@@ -206,7 +207,7 @@ export default function App() {
   const [invoicePageIndex, setInvoicePageIndex] = useState(0);
   const [invoiceDirection, setInvoiceDirection] = useState<InvoiceDirection>(0);
   const [selectedModelId, setSelectedModelId] = useState("auto");
-  const [viewMode, setViewMode] = useState<ViewMode>("plain");
+  const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [plainScrollTop, setPlainScrollTop] = useState(0);
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
@@ -253,6 +254,18 @@ export default function App() {
   const canNavigateInvoiceBack = selectedTurnIndex > 0;
   const canNavigateInvoiceForward = selectedTurnIndex >= 0 && selectedTurnIndex < conversationTurns.length - 1;
   const canSubmitUserMessage = draftUserMessage.trim().length > 0;
+  const chatTranscript = conversationTurns.flatMap((message, index) => [
+    { id: `user-${index}`, role: "user" as const, label: `User message ${index + 1}`, content: message },
+    {
+      id: `assistant-${index}`,
+      role: "assistant" as const,
+      label: `Assistant response ${index + 1}`,
+      content: conversationAssistantResponses[index] ?? "I would answer using the submitted user request and the current prompt context.",
+    },
+  ]);
+  const pendingChatMessage = draftUserMessage.trim().length > 0
+    ? { id: "pending-user", role: "pending" as const, label: "User request to initiate", content: draftUserMessage }
+    : undefined;
 
   function buildInvoicePage(turnIndex: number) {
     const optionalRows = promptPatchLayers.map((layer) => ({
@@ -391,7 +404,7 @@ export default function App() {
     setConversationTurns([]);
     setInvoicePageIndex(0);
     setInvoiceDirection(0);
-    setViewMode("plain");
+    setViewMode("chat");
     scrollPlainEditorTo(nextText);
   }
 
@@ -402,7 +415,7 @@ export default function App() {
     setConversationTurns([]);
     setInvoicePageIndex(0);
     setInvoiceDirection(0);
-    setViewMode("plain");
+    setViewMode("chat");
     scrollPlainEditorTo(nextText);
   }
 
@@ -420,7 +433,7 @@ export default function App() {
     setDraftUserMessage(conversationUserRequests[nextTurns.length] ?? "");
     setInvoicePageIndex(nextTurnIndex);
     setInvoiceDirection(1);
-    setViewMode("plain");
+    setViewMode("chat");
     scrollPlainEditorTo(nextText, "<userRequest>");
     chatInputRef.current?.focus({ preventScroll: true });
   }
@@ -458,6 +471,15 @@ export default function App() {
         <div className="editor-card panel">
           <div className="view-bar">
             <div className="view-toggle" role="tablist" aria-label="Tokenizer view mode">
+              <button
+                aria-selected={viewMode === "chat"}
+                className={viewMode === "chat" ? "active" : ""}
+                role="tab"
+                type="button"
+                onClick={() => setViewMode("chat")}
+              >
+                Chat
+              </button>
               <button
                 aria-selected={viewMode === "plain"}
                 className={viewMode === "plain" ? "active" : ""}
@@ -563,7 +585,28 @@ export default function App() {
                     .join("\n\n")}
               </div>
             </div>
-            {viewMode === "plain" ? (
+            {viewMode === "chat" ? (
+              <div className="text-viewport chat-transcript" aria-label="Chat transcript" tabIndex={0}>
+                {chatTranscript.length === 0 && !pendingChatMessage ? (
+                  <p className="chat-empty">Submit a user request to start the conversation.</p>
+                ) : (
+                  <>
+                    {chatTranscript.map((message) => (
+                      <article className={`chat-message chat-message-${message.role}`} key={message.id}>
+                        <span className="chat-message-label">{message.label}</span>
+                        <p>{message.content}</p>
+                      </article>
+                    ))}
+                    {pendingChatMessage && (
+                      <article className="chat-message chat-message-pending" key={pendingChatMessage.id}>
+                        <span className="chat-message-label">{pendingChatMessage.label}</span>
+                        <p>{pendingChatMessage.content}</p>
+                      </article>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : viewMode === "plain" ? (
               <div className="plaintext-shell">
                 <pre
                   className="text-viewport plaintext-highlight"

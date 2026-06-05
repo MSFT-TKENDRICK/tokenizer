@@ -401,6 +401,58 @@ h3 {
   color: transparent;
 }
 
+.chat-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--color-background);
+}
+
+.chat-empty,
+.chat-message p {
+  margin: 0;
+}
+
+.chat-empty {
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.chat-message {
+  display: grid;
+  gap: 8px;
+  max-width: min(78%, 620px);
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
+}
+
+.chat-message-user,
+.chat-message-pending {
+  align-self: flex-end;
+  border-color: var(--color-primary);
+}
+
+.chat-message-assistant {
+  align-self: flex-start;
+  background: var(--color-shell);
+}
+
+.chat-message-label {
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.chat-message p {
+  color: var(--color-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .chat-composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 88px;

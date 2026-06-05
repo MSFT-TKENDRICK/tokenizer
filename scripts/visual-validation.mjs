@@ -8,9 +8,18 @@ const scenarios = [
   {
     name: "desktop-default",
     viewport: { width: 1440, height: 900 },
+    viewLabel: "Chat transcript",
+    run: async (page) => {
+      await page.goto(baseURL);
+    },
+  },
+  {
+    name: "desktop-plaintext",
+    viewport: { width: 1440, height: 900 },
     viewLabel: "Plaintext editor",
     run: async (page) => {
       await page.goto(baseURL);
+      await page.getByRole("tab", { name: "Plaintext" }).click();
     },
   },
   {
@@ -40,7 +49,7 @@ const scenarios = [
   {
     name: "mobile-default",
     viewport: { width: 390, height: 844 },
-    viewLabel: "Plaintext editor",
+    viewLabel: "Chat transcript",
     run: async (page) => {
       await page.goto(baseURL);
     },
@@ -77,9 +86,9 @@ for (const scenario of scenarios) {
     await scenario.run(page);
     await page.getByRole("heading", { name: "GitHub Copilot Tokenization" }).waitFor();
     await page.getByLabel(scenario.viewLabel).waitFor();
-    if (scenario.viewLabel !== "Plaintext editor") {
+    if (scenario.viewLabel === "Token text view" || scenario.viewLabel === "Token ID view") {
       await page.locator(".token-segment").first().waitFor();
-    } else {
+    } else if (scenario.viewLabel === "Plaintext editor") {
       await page.locator(".plaintext-highlight .xml-tag").first().waitFor();
     }
     const hasHorizontalOverflow = await page.evaluate(

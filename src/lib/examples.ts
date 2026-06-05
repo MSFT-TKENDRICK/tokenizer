@@ -77,6 +77,11 @@ export const conversationUserRequests = [
   "Using the prior workspace context, explain the next implementation step.",
 ] as const;
 
+export const conversationAssistantResponses = [
+  "Here is something new: Copilot can reuse stable prompt context across turns, so repeated workspace and instruction blocks can become cached input while the new user request still drives the next response.",
+  "The next implementation step is to inspect the changed files, identify the smallest safe edit, update the relevant test coverage, and run the existing validation commands before summarizing the result.",
+] as const;
+
 export const promptPatchLayers: readonly PromptPatchLayer[] = [
   {
     id: "workspace",

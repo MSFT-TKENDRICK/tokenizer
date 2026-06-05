@@ -1,5 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
-import { composeConversationRequest, composePrompt, conversationUserRequests, defaultUserRequest, promptPatchLayers } from "../../src/lib/examples";
+import {
+  composeConversationRequest,
+  composePrompt,
+  conversationAssistantResponses,
+  conversationUserRequests,
+  defaultUserRequest,
+  promptPatchLayers,
+} from "../../src/lib/examples";
 import { tokenize } from "../../src/lib/tokenizer";
 
 const basePrompt = composePrompt([], "");
@@ -27,11 +34,13 @@ test.afterEach(async ({ page }, testInfo) => {
   await expect(page).toHaveTitle(/GitHub Copilot Tokenization/);
 });
 
-test("renders the tokenizer workspace with the default plaintext view", async ({ page }) => {
-  await expect(page.getByRole("tab", { name: "Plaintext" })).toHaveAttribute("aria-selected", "true");
+test("renders the tokenizer workspace with the default chat view", async ({ page }) => {
+  await expect(page.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Text, tokens, and token IDs" })).toHaveCount(0);
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
+  await expect(page.getByLabel("Chat transcript")).toContainText(defaultUserRequest);
+  await expect(page.getByLabel("Chat transcript")).not.toContainText("<workspace_info>");
+  await expect(page.getByLabel("Chat transcript")).not.toContainText("<userRequest>");
   await expect(inlineMetric(page, "tokens")).toHaveText(/\d+/);
   await expect(page.getByLabel("Prompt metrics")).toContainText("AI credits");
   await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
@@ -47,6 +56,8 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByLabel("Model pricing metadata")).toContainText("$0.5/1M");
   await expect(page.getByLabel("Model pricing metadata")).not.toContainText("legacy");
   await expect(page.getByLabel("Prompt context controls")).toBeVisible();
+  await page.getByRole("tab", { name: "Plaintext" }).click();
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.locator(".plaintext-highlight .xml-tag").first()).toBeVisible();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(/  <coding_agent_instructions>/);
   await expect(page.locator(".plaintext-highlight")).toContainText("</coding_agent_instructions>");
@@ -73,6 +84,7 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
 });
 
 test("toggles one shared viewport between plaintext, tokens, and token IDs", async ({ page }) => {
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   const plaintextBox = page.getByLabel("Plaintext editor");
   const plaintextBounds = await plaintextBox.boundingBox();
   expect(plaintextBounds).not.toBeNull();
@@ -99,6 +111,7 @@ test("toggles one shared viewport between plaintext, tokens, and token IDs", asy
 });
 
 test("plaintext prompt is read-only and chat composer updates counts", async ({ page }) => {
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   const textarea = page.getByLabel("Plaintext editor");
   const chatInput = page.getByLabel("Chat message input");
   const initialPrompt = await textarea.inputValue();
@@ -128,6 +141,10 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
   const submitButton = page.getByRole("button", { name: "Submit user message" });
   await submitButton.click();
+  await expect(page.getByLabel("Chat transcript")).toContainText(conversationUserRequests[0]);
+  await expect(page.getByLabel("Chat transcript")).toContainText(conversationAssistantResponses[0]);
+  await expect(page.getByLabel("Chat transcript")).not.toContainText("<workspace_info>");
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]])));
   await expect(page.locator(".plaintext-highlight")).toContainText("userRequest");
   await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
@@ -144,6 +161,7 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   expect(await invoiceCachedValue(page, "Turn total")).toBe(0);
 
   await submitButton.click();
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests)));
   await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
   await expect(textarea).toHaveValue(/Repository structure includes api\/src\/routes/);
@@ -152,7 +170,6 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(submitButton).toBeDisabled();
   expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceCreditValue(page, "Conversation total")).toBeGreaterThanOrEqual(await invoiceCreditValue(page, "Turn total"));
-  await expect(chatInput).toBeFocused();
 
   await page.getByRole("button", { name: /Workspace context/ }).click();
   await expect(textarea).toHaveValue(composePrompt(["workspace"], composeConversationRequest(conversationUserRequests)));
@@ -164,11 +181,13 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
 });
 
 test("XML syntax highlighting preserves readonly closing tags while scrolling", async ({ page }) => {
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   const editor = page.getByLabel("Plaintext editor");
   await expect(page.locator(".plaintext-highlight")).toHaveText(basePrompt);
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</coding_agent_instructions>" })).toBeVisible();
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</system>" })).toHaveCount(1);
   await page.getByRole("button", { name: "Submit user message" }).click();
+  await page.getByRole("tab", { name: "Plaintext" }).click();
 
   await editor.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -180,6 +199,7 @@ test("XML syntax highlighting preserves readonly closing tags while scrolling", 
 test("Clear empties chat input and Restore sample restores the base prompt", async ({ page }) => {
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(page.getByLabel("Chat message input")).toHaveValue("");
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], ""));
   await expect(page.getByRole("button", { name: "Submit user message" })).toBeDisabled();
   await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
@@ -194,11 +214,13 @@ test("Clear empties chat input and Restore sample restores the base prompt", asy
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
   await page.getByRole("button", { name: "Submit user message" }).click();
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]])));
   await expect(page.getByRole("button", { name: "Submit user message" })).toBeEnabled();
 });
 
 test("context layer buttons apply and remove prompt diffs", async ({ page }) => {
+  await page.getByRole("tab", { name: "Plaintext" }).click();
   const workspaceButton = page.getByRole("button", { name: /Workspace/ });
   const toolsButton = page.getByRole("button", { name: /Tools/ });
   const editor = page.getByLabel("Plaintext editor");
@@ -315,10 +337,14 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 2");
   await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-previous/);
   expect(await invoiceTokenValue(page, "Turn total")).toBe(firstTurnTotal);
+  expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
+  await expect(page.getByLabel("Chat message input")).toHaveValue("");
+  await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
 
   await page.getByRole("button", { name: "Next conversation turn" }).click();
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
   await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-next/);
+  expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
 });
 
 test("mobile viewport keeps visible features usable", async ({ page }) => {
@@ -327,7 +353,7 @@ test("mobile viewport keeps visible features usable", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
   await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Plaintext editor")).toBeVisible();
+  await expect(page.getByLabel("Chat transcript")).toBeVisible();
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
