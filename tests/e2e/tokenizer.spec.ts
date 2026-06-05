@@ -11,6 +11,7 @@ import { tokenize } from "../../src/lib/tokenizer";
 
 const pendingFirstPrompt = composePrompt([], composeConversationRequest([defaultUserRequest]));
 const allLayerIds = promptPatchLayers.map((layer) => layer.id);
+const heroHeading = ">_ GitHub Copilot Tokenization";
 
 test.beforeEach(async ({ page }, testInfo) => {
   const browserErrors: string[] = [];
@@ -24,7 +25,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   page.on("pageerror", (error) => browserErrors.push(error.message));
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: heroHeading })).toBeVisible();
 });
 
 test.afterEach(async ({ page }, testInfo) => {
@@ -35,7 +36,7 @@ test.afterEach(async ({ page }, testInfo) => {
 
 test("renders the tokenizer workspace with the default chat view", async ({ page }) => {
   await expect(page.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: heroHeading })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Text, tokens, and token IDs" })).toHaveCount(0);
   await expect(page.getByLabel("Chat transcript")).toHaveText("");
   await expect(page.getByLabel("Chat transcript")).not.toContainText("<workspace_info>");
@@ -428,7 +429,7 @@ test("mobile viewport keeps visible features usable", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: heroHeading })).toBeVisible();
   await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Chat transcript")).toBeVisible();
   await page.getByRole("tab", { name: "Tokens" }).click();

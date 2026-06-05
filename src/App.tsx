@@ -558,7 +558,7 @@ export default function App() {
       <section className="hero panel">
         <div>
           <p className="eyebrow">GitHub Copilot</p>
-          <h1 id="app-title">GitHub Copilot Tokenization</h1>
+          <h1 id="app-title">&gt;_ GitHub Copilot Tokenization</h1>
           <p className="hero-copy">
             Paste text to inspect an approximate token breakdown, readable usage counts, and how much of a selected context window your prompt may consume.
           </p>
