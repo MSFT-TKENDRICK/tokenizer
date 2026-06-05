@@ -64,9 +64,11 @@ tell me something new
 
 export const defaultUserRequest = extractTaggedContent(userPromptTwoRaw, "userRequest") ?? "tell me something new";
 
+const hiddenWorkspaceContext = extractTaggedContent(userPromptOneRaw, "workspace_info") ?? stripCacheControl(userPromptOneRaw);
+
 export const conversationUserRequests = [
   defaultUserRequest,
-  deriveFollowUpUserRequest(userPromptOneRaw, userPromptTwoRaw),
+  "Using the prior workspace context, explain the next implementation step.",
 ] as const;
 
 export const promptPatchLayers: readonly PromptPatchLayer[] = [
@@ -209,6 +211,13 @@ export function composeConversationRequest(messages: readonly string[]) {
   return [
     "<conversation>",
     ...messages.flatMap((message, index) => [
+      ...(index > 0
+        ? [
+          `<context turn="${index + 1}">`,
+          hiddenWorkspaceContext.trim(),
+          "</context>",
+        ]
+        : []),
       `<userRequest turn="${index + 1}">`,
       message,
       "</userRequest>",
@@ -260,17 +269,6 @@ function isClosingTag(value: string) {
 
 function isOpeningTag(value: string) {
   return /^<[\w:-]+(?:\s+[^>]*)?>$/.test(value) && !value.endsWith("/>") && !value.includes("</");
-}
-
-function deriveFollowUpUserRequest(userPromptOne: string, userPromptTwo: string) {
-  const workspace = extractTaggedContent(userPromptOne, "workspace_info") ?? stripCacheControl(userPromptOne);
-  const currentRequest = extractTaggedContent(userPromptTwo, "userRequest") ?? stripCacheControl(userPromptTwo);
-  return [
-    "Using the prior workspace context, explain the next implementation step.",
-    "",
-    `<previousContext>${workspace.trim()}</previousContext>`,
-    `<previousRequest>${currentRequest.trim()}</previousRequest>`,
-  ].join("\n");
 }
 
 function extractTaggedContent(value: string, tagName: string) {

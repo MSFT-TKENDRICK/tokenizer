@@ -135,12 +135,15 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
   await expect(submitButton).toBeEnabled();
   await expect(chatInput).toHaveValue(conversationUserRequests[1]);
+  await expect(chatInput).not.toHaveValue(/workspace_info|previousContext|<context/);
   expect(await invoiceTokenValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceCachedValue(page, "Turn total")).toBe(0);
 
   await submitButton.click();
   await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests)));
   await expect(textarea).toHaveValue(/turn="2"/);
+  await expect(textarea).toHaveValue(/<context turn="2">/);
+  await expect(textarea).toHaveValue(/Repository structure includes api\/src\/routes/);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
   await expect(submitButton).toBeDisabled();
   expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
