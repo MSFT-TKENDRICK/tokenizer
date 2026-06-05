@@ -38,9 +38,10 @@ test("renders the tokenizer workspace with the default chat view", async ({ page
   await expect(page.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "GitHub Copilot Tokenization" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Text, tokens, and token IDs" })).toHaveCount(0);
-  await expect(page.getByLabel("Chat transcript")).toContainText(defaultUserRequest);
+  await expect(page.getByLabel("Chat transcript")).toHaveText("");
   await expect(page.getByLabel("Chat transcript")).not.toContainText("<workspace_info>");
   await expect(page.getByLabel("Chat transcript")).not.toContainText("<userRequest>");
+  await expect(page.getByLabel("Chat transcript")).not.toContainText(defaultUserRequest);
   await expect(inlineMetric(page, "tokens")).toHaveText(/\d+/);
   await expect(page.getByLabel("Prompt metrics")).toContainText("AI credits");
   await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);

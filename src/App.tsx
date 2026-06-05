@@ -263,9 +263,6 @@ export default function App() {
       content: conversationAssistantResponses[index] ?? "I would answer using the submitted user request and the current prompt context.",
     },
   ]);
-  const pendingChatMessage = draftUserMessage.trim().length > 0
-    ? { id: "pending-user", role: "pending" as const, label: "User request to initiate", content: draftUserMessage }
-    : undefined;
 
   function buildInvoicePage(turnIndex: number) {
     const optionalRows = promptPatchLayers.map((layer) => ({
@@ -586,25 +583,13 @@ export default function App() {
               </div>
             </div>
             {viewMode === "chat" ? (
-              <div className="text-viewport chat-transcript" aria-label="Chat transcript" tabIndex={0}>
-                {chatTranscript.length === 0 && !pendingChatMessage ? (
-                  <p className="chat-empty">Submit a user request to start the conversation.</p>
-                ) : (
-                  <>
-                    {chatTranscript.map((message) => (
-                      <article className={`chat-message chat-message-${message.role}`} key={message.id}>
-                        <span className="chat-message-label">{message.label}</span>
-                        <p>{message.content}</p>
-                      </article>
-                    ))}
-                    {pendingChatMessage && (
-                      <article className="chat-message chat-message-pending" key={pendingChatMessage.id}>
-                        <span className="chat-message-label">{pendingChatMessage.label}</span>
-                        <p>{pendingChatMessage.content}</p>
-                      </article>
-                    )}
-                  </>
-                )}
+              <div className="text-viewport chat-transcript" aria-label="Chat transcript" role="log" tabIndex={0}>
+                {chatTranscript.map((message) => (
+                  <article className={`chat-message chat-message-${message.role}`} key={message.id}>
+                    <span className="chat-message-label">{message.label}</span>
+                    <p>{message.content}</p>
+                  </article>
+                ))}
               </div>
             ) : viewMode === "plain" ? (
               <div className="plaintext-shell">

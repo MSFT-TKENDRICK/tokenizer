@@ -408,14 +408,8 @@ h3 {
   background: var(--color-background);
 }
 
-.chat-empty,
 .chat-message p {
   margin: 0;
-}
-
-.chat-empty {
-  color: var(--color-muted);
-  font-size: 14px;
 }
 
 .chat-message {
@@ -427,8 +421,7 @@ h3 {
   background: var(--color-background);
 }
 
-.chat-message-user,
-.chat-message-pending {
+.chat-message-user {
   align-self: flex-end;
   border-color: var(--color-primary);
 }
