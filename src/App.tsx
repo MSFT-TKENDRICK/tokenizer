@@ -88,6 +88,53 @@ function emptyInvoiceTotal(): InvoiceTotal {
   return { inputTokens: 0, cachedTokens: 0, outputTokens: 0, aiCredits: 0 };
 }
 
+function creditFormulaTitle(model: {
+  pricing: {
+    inputPerMillionTokensUsd: number;
+    cachedInputPerMillionTokensUsd: number;
+    outputPerMillionTokensUsd: number;
+  };
+}) {
+  return [
+    "AI credits = input credits + cached input credits + output credits.",
+    `input credits = uncached input tokens / 1,000,000 x ${formatCurrency(model.pricing.inputPerMillionTokensUsd)} / ${formatCurrency(0.01)}`,
+    `cached input credits = cached input tokens / 1,000,000 x ${formatCurrency(model.pricing.cachedInputPerMillionTokensUsd)} / ${formatCurrency(0.01)}`,
+    `output credits = output tokens / 1,000,000 x ${formatCurrency(model.pricing.outputPerMillionTokensUsd)} / ${formatCurrency(0.01)}`,
+  ].join("\n");
+}
+
+function creditCalculationTitle(total: InvoiceTotal, model: {
+  pricing: {
+    inputPerMillionTokensUsd: number;
+    cachedInputPerMillionTokensUsd: number;
+    outputPerMillionTokensUsd: number;
+  };
+}) {
+  if (total.inputTokens + total.cachedTokens + total.outputTokens === 0) {
+    return undefined;
+  }
+
+  const uncachedInputTokens = Math.max(total.inputTokens - total.cachedTokens, 0);
+  const inputCredits = ((uncachedInputTokens / 1_000_000) * model.pricing.inputPerMillionTokensUsd) / 0.01;
+  const cachedCredits = ((total.cachedTokens / 1_000_000) * model.pricing.cachedInputPerMillionTokensUsd) / 0.01;
+  const outputCredits = ((total.outputTokens / 1_000_000) * model.pricing.outputPerMillionTokensUsd) / 0.01;
+  return [
+    `${formatAiCredits(total.aiCredits)} AI credits total`,
+    `Uncached input: ${formatNumber(uncachedInputTokens)} tokens x ${formatCurrency(model.pricing.inputPerMillionTokensUsd)}/1M = ${formatAiCredits(inputCredits)} credits`,
+    `Cached input: ${formatNumber(total.cachedTokens)} tokens x ${formatCurrency(model.pricing.cachedInputPerMillionTokensUsd)}/1M = ${formatAiCredits(cachedCredits)} credits`,
+    `Output: ${formatNumber(total.outputTokens)} tokens x ${formatCurrency(model.pricing.outputPerMillionTokensUsd)}/1M = ${formatAiCredits(outputCredits)} credits`,
+  ].join("\n");
+}
+
+function rowCreditCalculationTitle(row: InvoiceRow, model: Parameters<typeof creditCalculationTitle>[1]) {
+  return creditCalculationTitle({
+    inputTokens: row.inputTokens,
+    cachedTokens: row.cachedTokens,
+    outputTokens: row.outputTokens,
+    aiCredits: row.aiCredits,
+  }, model);
+}
+
 function visibleTokenText(token: Token) {
   return token.text;
 }
@@ -816,7 +863,7 @@ export default function App() {
                     <th scope="col">Input</th>
                     <th scope="col">Cached</th>
                     <th scope="col">Output</th>
-                    <th scope="col">Credits</th>
+                    <th scope="col" title={creditFormulaTitle(selectedModel)}>Credits</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -826,7 +873,7 @@ export default function App() {
                       <td>{formatNumber(row.inputTokens)}</td>
                       <td>{formatNumber(row.cachedTokens)}</td>
                       <td>{formatNumber(row.outputTokens)}</td>
-                      <td>{formatAiCredits(row.aiCredits)}</td>
+                      <td title={rowCreditCalculationTitle(row, selectedModel)}>{formatAiCredits(row.aiCredits)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -836,14 +883,18 @@ export default function App() {
                     <td>{formatNumber(selectedInvoicePage.total.inputTokens)}</td>
                     <td>{formatNumber(selectedInvoicePage.total.cachedTokens)}</td>
                     <td>{formatNumber(selectedInvoicePage.total.outputTokens)}</td>
-                    <td>{formatAiCredits(selectedInvoicePage.total.aiCredits)}</td>
+                    <td title={creditCalculationTitle(selectedInvoicePage.total, selectedModel)}>
+                      {formatAiCredits(selectedInvoicePage.total.aiCredits)}
+                    </td>
                   </tr>
                   <tr className="conversation-total">
                     <th scope="row">Conversation total</th>
                     <td>{formatNumber(conversationTotals.inputTokens)}</td>
                     <td>{formatNumber(conversationTotals.cachedTokens)}</td>
                     <td>{formatNumber(conversationTotals.outputTokens)}</td>
-                    <td>{formatAiCredits(conversationTotals.aiCredits)}</td>
+                    <td title={creditCalculationTitle(conversationTotals, selectedModel)}>
+                      {formatAiCredits(conversationTotals.aiCredits)}
+                    </td>
                   </tr>
                 </tfoot>
               </table>

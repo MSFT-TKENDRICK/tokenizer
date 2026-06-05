@@ -310,6 +310,8 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   expect(await invoiceTokenValue(page, "Tools")).toBe(0);
   expect(await invoiceTokenValue(page, "Turn total")).toBe(0);
   expect(await invoiceOutputValue(page, "Turn total")).toBe(0);
+  await expect(invoice.getByRole("columnheader", { name: "Credits" })).toHaveAttribute("title", /AI credits = input credits \+ cached input credits \+ output credits/);
+  await expect(invoiceCreditCell(page, "System prompt")).not.toHaveAttribute("title");
 
   await page.getByRole("button", { name: "Submit user message" }).click();
   const totalTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
@@ -318,6 +320,9 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Turn total")).toBe(await invoiceOutputValue(page, "Assistant response"));
   expect(await invoiceTokenValue(page, "Turn total")).toBeLessThan(totalTokens);
+  await expect(invoiceCreditCell(page, "System prompt")).toHaveAttribute("title", /Uncached input: .* tokens x .*\/1M = .* credits/);
+  await expect(invoiceCreditCell(page, "Assistant response")).toHaveAttribute("title", /Output: .* tokens x .*\/1M = .* credits/);
+  await expect(invoiceCreditCell(page, "Turn total")).toHaveAttribute("title", /AI credits total/);
 
   await page.getByRole("button", { name: /Instructions context/ }).click();
   await page.getByRole("button", { name: /Tools context/ }).click();
@@ -410,6 +415,10 @@ async function invoiceOutputValue(page: Page, label: string) {
 
 async function invoiceCreditValue(page: Page, label: string) {
   return invoiceNumberValue(page, label, 3);
+}
+
+function invoiceCreditCell(page: Page, label: string) {
+  return page.getByLabel("Prompt cost invoice").locator("tr", { hasText: label }).locator("td").nth(3);
 }
 
 async function invoiceNumberValue(page: Page, label: string, columnIndex: number) {
