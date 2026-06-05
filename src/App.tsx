@@ -13,7 +13,14 @@ import {
   modelById,
   type CopilotModelFamilyId,
 } from "./lib/copilotModels";
-import { composePrompt, createPatchDiff, defaultUserRequest, getPromptSections, promptPatchLayers } from "./lib/examples";
+import {
+  composePrompt,
+  createPatchDiff,
+  defaultUserRequest,
+  getPromptSections,
+  promptPatchLayers,
+  submittedUserRequest,
+} from "./lib/examples";
 import "./App.css";
 
 type ViewMode = "plain" | "tokens" | "ids";
@@ -169,6 +176,7 @@ export default function App() {
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [draftUserMessage, setDraftUserMessage] = useState(defaultUserRequest);
   const [submittedUserMessage, setSubmittedUserMessage] = useState("");
+  const [hasSubmittedUserMessage, setHasSubmittedUserMessage] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState("auto");
   const [viewMode, setViewMode] = useState<ViewMode>("plain");
   const [plainScrollTop, setPlainScrollTop] = useState(0);
@@ -279,6 +287,7 @@ export default function App() {
     setSelectedLayerIds([]);
     setDraftUserMessage(defaultUserRequest);
     setSubmittedUserMessage("");
+    setHasSubmittedUserMessage(false);
     setViewMode("plain");
     scrollPlainEditorTo(nextText);
   }
@@ -288,14 +297,20 @@ export default function App() {
     setSelectedLayerIds([]);
     setDraftUserMessage("");
     setSubmittedUserMessage("");
+    setHasSubmittedUserMessage(false);
     setViewMode("plain");
     scrollPlainEditorTo(nextText);
   }
 
   function submitUserMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextText = composePrompt(selectedLayerIds, draftUserMessage);
-    setSubmittedUserMessage(draftUserMessage);
+    if (hasSubmittedUserMessage) {
+      return;
+    }
+
+    const nextText = composePrompt(selectedLayerIds, submittedUserRequest);
+    setSubmittedUserMessage(submittedUserRequest);
+    setHasSubmittedUserMessage(true);
     setViewMode("plain");
     scrollPlainEditorTo(nextText, "<userRequest>");
     chatInputRef.current?.focus({ preventScroll: true });
@@ -500,7 +515,13 @@ export default function App() {
                 rows={2}
                 spellCheck="true"
               />
-              <button className="chat-submit" type="submit" aria-label="Submit user message" title="Submit user message">
+              <button
+                className="chat-submit"
+                type="submit"
+                aria-label="Submit user message"
+                title={hasSubmittedUserMessage ? "User message submitted" : "Submit user message"}
+                disabled={hasSubmittedUserMessage}
+              >
                 <SubmitIcon />
               </button>
               <dl className="chat-impact" aria-label="Chat message token and credit impact">

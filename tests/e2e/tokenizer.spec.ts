@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
-import { composePrompt, defaultUserRequest, promptPatchLayers } from "../../src/lib/examples";
+import { composePrompt, defaultUserRequest, promptPatchLayers, submittedUserRequest } from "../../src/lib/examples";
+import { tokenize } from "../../src/lib/tokenizer";
 
 const basePrompt = composePrompt([], "");
 const allLayerIds = promptPatchLayers.map((layer) => layer.id);
@@ -33,9 +34,7 @@ test("renders the tokenizer workspace with the default plaintext view", async ({
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(inlineMetric(page, "tokens")).toHaveText(/\d+/);
   await expect(page.getByLabel("Prompt metrics")).toContainText("AI credits");
-  await expect(page.getByLabel("Chat message input")).toHaveValue(
-    "Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.",
-  );
+  await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
   await expect(page.getByLabel("Chat message input")).toBeFocused();
   await expect(page.getByRole("button", { name: "Submit user message" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Submit user message" }).locator("svg")).toBeVisible();
@@ -105,6 +104,8 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   expect(await textarea.evaluate((element) => element.readOnly)).toBe(true);
   expect(await chatInput.evaluate((element) => element.readOnly)).toBe(true);
   await expect(chatInput).toHaveCSS("resize", "none");
+  await expect(chatInput).toHaveCSS("outline-style", "none");
+  await expect(page.locator(".text-surface")).toHaveCSS("outline-style", "none");
   await expect(chatInput).toHaveValue(defaultUserRequest);
   await expect(textarea).not.toHaveValue(new RegExp(defaultUserRequest.slice(0, 24)));
   await textarea.focus();
@@ -115,16 +116,25 @@ test("plaintext prompt is read-only and chat composer updates counts", async ({ 
   await expect(textarea).toHaveValue(initialPrompt);
   await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
 
-  await expect(chatImpactMetric(page, "tokens")).toHaveText("45");
-  await expect(chatImpactMetric(page, "AI credits")).toHaveText("0.0203");
+  await expect(chatImpactMetric(page, "tokens")).toHaveText(formatMetric(tokenize(defaultUserRequest).length));
+  await expect(chatImpactMetric(page, "AI credits")).toHaveText(/\d/);
+  const impactBounds = await page.getByLabel("Chat message token and credit impact").boundingBox();
+  const submitBounds = await page.getByRole("button", { name: "Submit user message" }).boundingBox();
+  expect(submitBounds?.y).toBeCloseTo(impactBounds?.y ?? 0, 0);
+  expect(submitBounds?.height).toBeCloseTo(impactBounds?.height ?? 0, 0);
   await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
-  await page.getByRole("button", { name: "Submit user message" }).click();
-  await expect(textarea).toHaveValue(composePrompt([], defaultUserRequest));
-  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<userRequest>" })).toBeInViewport();
+  const submitButton = page.getByRole("button", { name: "Submit user message" });
+  await submitButton.click();
+  await expect(textarea).toHaveValue(composePrompt([], submittedUserRequest));
+  await expect(page.locator(".plaintext-highlight")).toContainText("<userRequest>");
+  await expect(textarea).toHaveValue(/<previousUserMessage>/);
+  await expect(textarea).toHaveValue(/<currentUserMessage>/);
+  await expect(textarea).toHaveValue(/tell me something new/);
+  await expect(submitButton).toBeDisabled();
   await expect(chatInput).toBeFocused();
 
   await page.getByRole("button", { name: /Workspace context/ }).click();
-  await expect(textarea).toHaveValue(composePrompt(["workspace"], defaultUserRequest));
+  await expect(textarea).toHaveValue(composePrompt(["workspace"], submittedUserRequest));
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(
     Number((await chatImpactMetric(page, "tokens").textContent())?.replace(/,/g, "")),
   );
@@ -150,6 +160,7 @@ test("Clear empties chat input and Restore sample restores the base prompt", asy
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(page.getByLabel("Chat message input")).toHaveValue("");
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], ""));
+  await expect(page.getByRole("button", { name: "Submit user message" })).toBeEnabled();
   await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
   await expect(chatImpactMetric(page, "AI credits")).toHaveText("0");
   expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(0);
@@ -162,7 +173,8 @@ test("Clear empties chat input and Restore sample restores the base prompt", asy
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(basePrompt);
   await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
   await page.getByRole("button", { name: "Submit user message" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], defaultUserRequest));
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], submittedUserRequest));
+  await expect(page.getByRole("button", { name: "Submit user message" })).toBeDisabled();
 });
 
 test("context layer buttons apply and remove prompt diffs", async ({ page }) => {

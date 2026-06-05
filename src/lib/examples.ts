@@ -34,7 +34,37 @@ Persist until the user's request is fully resolved.
 </working_with_the_user>
 </system>`;
 
-export const defaultUserRequest = "Update the shopping cart so signed-in users can add products, edit quantities, remove items, and see the order total before checkout.";
+const userPromptOneRaw = `<environment_info>
+The user's current OS is: Windows
+</environment_info>
+<workspace_info>
+Workspace folder: c:\\src\\GitHubCopilot_Customized
+Runnable tasks:
+- Build API: npm run build --workspace=api
+- Build Frontend: npm run build --workspace=frontend
+Repository structure includes api/src/routes, frontend/src/components, specs/002-shopping-cart, and tests.
+</workspace_info>
+<userMemory>
+- When a user asks to exclude a file from gitignore rules, add or preserve a negation rule.
+</userMemory>`;
+
+const userPromptTwoRaw = `<attachments>
+<attachment id="Browser Pages">
+No browser pages are currently shared with you.
+</attachment>
+</attachments>
+<context>
+The current date is 2026-06-04.
+Terminals:
+- pwsh in C:\\src\\GitHubCopilot_Customized
+</context>
+<userRequest>
+tell me something new
+</userRequest>`;
+
+export const defaultUserRequest = extractTaggedContent(userPromptTwoRaw, "userRequest") ?? "tell me something new";
+
+export const submittedUserRequest = deriveSubmittedUserRequest(userPromptOneRaw, userPromptTwoRaw);
 
 export const promptPatchLayers: readonly PromptPatchLayer[] = [
   {
@@ -208,4 +238,27 @@ function isClosingTag(value: string) {
 
 function isOpeningTag(value: string) {
   return /^<[\w:-]+(?:\s+[^>]*)?>$/.test(value) && !value.endsWith("/>") && !value.includes("</");
+}
+
+function deriveSubmittedUserRequest(userPromptOne: string, userPromptTwo: string) {
+  return [
+    "<previousUserMessage>",
+    stripCacheControl(userPromptOne).trim(),
+    "</previousUserMessage>",
+    "",
+    "<currentUserMessage>",
+    stripCacheControl(userPromptTwo).trim(),
+    "</currentUserMessage>",
+  ].join("\n");
+}
+
+function extractTaggedContent(value: string, tagName: string) {
+  const pattern = new RegExp(`<${tagName}>\\s*([\\s\\S]*?)\\s*<\\/${tagName}>`);
+  return value.match(pattern)?.[1]?.trim();
+}
+
+function stripCacheControl(value: string) {
+  return value
+    .replace(/\n*\[copilot_cache_control:[^\]]+\]\s*/g, "")
+    .replace(/\r\n?/g, "\n");
 }
