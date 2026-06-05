@@ -213,7 +213,7 @@ test("Clear empties chat input and Restore sample restores the base prompt", asy
   await expect(page.getByRole("button", { name: "Submit user message" })).toBeDisabled();
   await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
   await expect(chatImpactMetric(page, "AI credits")).toHaveText("0");
-  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(0);
+  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBe(0);
 
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).not.toContainText("userRequest");
@@ -243,7 +243,7 @@ test("context layer buttons apply and remove prompt diffs", async ({ page }) => 
   await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<workspace_info>" })).toBeInViewport();
   await expect(page.getByLabel("Selected context preview")).toContainText("diff --git");
   await expect(page.getByLabel("Selected context preview")).toContainText("+<workspace_info>");
-  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(baseTokens);
+  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBe(baseTokens);
 
   await toolsButton.click();
   await expect(editor).toHaveValue(composePrompt(["workspace", "tools"], ""));
@@ -278,6 +278,7 @@ test("context layers isolate canonical Copilot context sources", async ({ page }
 });
 
 test("model selector changes context copy and meter width", async ({ page }) => {
+  await page.getByRole("button", { name: "Submit user message" }).click();
   const meter = page.locator(".meter span");
   const initialWidth = await meter.evaluate((element) => getComputedStyle(element).width);
   const initialCredits = Number((await inlineMetric(page, "ai-credits").textContent())?.replace(/,/g, ""));
@@ -319,7 +320,8 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   expect(await invoiceTokenValue(page, "System prompt")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Turn total")).toBe(await invoiceOutputValue(page, "Assistant response"));
-  expect(await invoiceTokenValue(page, "Turn total")).toBeLessThan(totalTokens);
+  expect(totalTokens).toBe(await invoiceTokenValue(page, "Turn total") + await invoiceOutputValue(page, "Turn total"));
+  expect(Number((await inlineMetric(page, "ai-credits").textContent())?.replace(/,/g, ""))).toBeCloseTo(await invoiceCreditValue(page, "Turn total"), 3);
   await expect(invoiceCreditCell(page, "System prompt")).toHaveAttribute("title", /Uncached input: .* tokens x .*\/1M = .* credits/);
   await expect(invoiceCreditCell(page, "Assistant response")).toHaveAttribute("title", /Output: .* tokens x .*\/1M = .* credits/);
   await expect(invoiceCreditCell(page, "Turn total")).toHaveAttribute("title", /AI credits total/);
@@ -331,8 +333,8 @@ test("itemized invoice totals match prompt metrics", async ({ page }) => {
   expect(await invoiceTokenValue(page, "Custom instructions")).toBeGreaterThan(0);
   expect(await invoiceTokenValue(page, "Tools")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
-  expect(await invoiceTokenValue(page, "Turn total")).toBeLessThan(
-    Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, "")),
+  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBe(
+    await invoiceTokenValue(page, "Turn total") + await invoiceOutputValue(page, "Turn total"),
   );
 });
 

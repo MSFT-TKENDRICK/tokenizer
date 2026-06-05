@@ -300,15 +300,8 @@ export default function App() {
   const draftUserMessageTokens = useMemo(() => tokenize(draftUserMessage), [draftUserMessage]);
   const summary = useMemo(() => summarizeTokens(text, tokens, selectedModel), [text, tokens, selectedModel]);
   const displayedTokens = tokens;
-  const contextPercent = summary.model?.contextPercentage ?? 0;
-  const remainingContext = Math.max(selectedModel.contextWindow - summary.tokens, 0);
-  const estimatedInputCost = estimateInputUsd(summary.tokens, selectedModel);
-  const estimatedInputAiCredits = estimateInputAiCredits(summary.tokens, selectedModel);
   const estimatedUserMessageCost = estimateInputUsd(draftUserMessageTokens.length, selectedModel);
   const estimatedUserMessageAiCredits = estimateInputAiCredits(draftUserMessageTokens.length, selectedModel);
-  const selectedOutputTokens = selectedTurnIndex >= 0 ? tokenize(assistantResponseForTurn(selectedTurnIndex)).length : 0;
-  const selectedOutputCost = estimateOutputUsd(selectedOutputTokens, selectedModel);
-  const selectedOutputAiCredits = estimateOutputAiCredits(selectedOutputTokens, selectedModel);
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
   const invoicePages = useMemo(
     () => conversationTurns.map((_, index) => buildInvoicePage(index)),
@@ -316,6 +309,13 @@ export default function App() {
   );
   const selectedInvoicePage = selectedTurnIndex >= 0 ? invoicePages[selectedTurnIndex] : buildInvoicePage(-1);
   const invoiceRows = selectedInvoicePage.rows;
+  const canonicalTokenCount = selectedInvoicePage.total.inputTokens + selectedInvoicePage.total.outputTokens;
+  const contextPercent = Math.min((canonicalTokenCount / selectedModel.contextWindow) * 100, 100);
+  const remainingContext = Math.max(selectedModel.contextWindow - canonicalTokenCount, 0);
+  const selectedInputAiCredits = Math.max(selectedInvoicePage.total.aiCredits - estimateOutputAiCredits(selectedInvoicePage.total.outputTokens, selectedModel), 0);
+  const selectedInputCost = selectedInputAiCredits * 0.01;
+  const selectedOutputCost = estimateOutputUsd(selectedInvoicePage.total.outputTokens, selectedModel);
+  const selectedOutputAiCredits = estimateOutputAiCredits(selectedInvoicePage.total.outputTokens, selectedModel);
   const conversationTotals = useMemo(
     () => invoicePages.reduce(
       (total, page) => ({
@@ -787,7 +787,7 @@ export default function App() {
 
           <div className="controls-row">
             <p className="cost-note">
-              Estimated selected turn: {formatAiCredits(estimatedInputAiCredits)} input credits ({formatCurrency(estimatedInputCost)}) and {formatAiCredits(selectedOutputAiCredits)} output credits ({formatCurrency(selectedOutputCost)}).
+              Estimated selected turn: {formatAiCredits(selectedInputAiCredits)} input credits ({formatCurrency(selectedInputCost)}) and {formatAiCredits(selectedOutputAiCredits)} output credits ({formatCurrency(selectedOutputCost)}).
             </p>
           </div>
 
@@ -810,7 +810,7 @@ export default function App() {
           <dl className="context-metrics" aria-label="Prompt metrics">
             <div data-metric="tokens">
               <dt>tokens</dt>
-              <dd aria-label="Current token count">{formatNumber(summary.tokens)}</dd>
+              <dd aria-label="Current token count">{formatNumber(canonicalTokenCount)}</dd>
             </div>
             <div data-metric="characters">
               <dt>characters</dt>
@@ -826,7 +826,7 @@ export default function App() {
             </div>
             <div data-metric="ai-credits">
               <dt>AI credits</dt>
-              <dd>{formatAiCredits(estimatedInputAiCredits)}</dd>
+              <dd>{formatAiCredits(selectedInvoicePage.total.aiCredits)}</dd>
             </div>
           </dl>
 
