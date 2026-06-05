@@ -321,7 +321,7 @@ export default function App() {
   const selectedOutputCost = estimateOutputUsd(selectedInvoicePage.total.outputTokens, selectedModel);
   const selectedOutputAiCredits = estimateOutputAiCredits(selectedInvoicePage.total.outputTokens, selectedModel);
   const conversationTotals = useMemo(
-    () => invoicePages.reduce(
+    () => invoicePages.slice(0, selectedTurnIndex + 1).reduce(
       (total, page) => ({
         inputTokens: total.inputTokens + page.total.inputTokens,
         cachedTokens: total.cachedTokens + page.total.cachedTokens,
@@ -330,7 +330,7 @@ export default function App() {
       }),
       emptyInvoiceTotal(),
     ),
-    [invoicePages],
+    [invoicePages, selectedTurnIndex],
   );
   const invoicePageCount = conversationTurns.length;
   const canNavigateInvoiceBack = selectedTurnIndex > 0;

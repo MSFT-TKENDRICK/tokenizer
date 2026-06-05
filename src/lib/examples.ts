@@ -92,6 +92,27 @@ That lets you build reusable UI pieces that behave correctly wherever they’re 
   "Final plan: keep the chat transcript readable, render the full XML-like prompt trace in Plaintext/Tokens/Token IDs, calculate input, cached input, and output separately, and use the invoice totals as the canonical summary metrics.",
 ] as const;
 
+const toolsSkillsContent = `<skills>
+Here is a list of skills that contain domain specific knowledge.
+When the user's task falls within a skill domain, read the skill file before acting.
+<skill>
+<name>web-design-reviewer</name>
+<description>Review and remediate website UI issues through browser-driven inspection and source-level fixes across responsive layouts, accessibility, and visual consistency. Use when asked to review website design, check UI, fix layout issues, inspect accessibility contrast, or validate responsive behavior.</description>
+<file>C:\\Users\\developer\\.copilot\\skills\\web-design-reviewer\\SKILL.md</file>
+</skill>
+</skills>`;
+
+const toolsInstructionContent = `<instruction forToolsWithPrefix="mcp_github">
+# GitHub MCP Server
+Use this server for GitHub repository, issue, pull request, commit, and workflow context.
+
+## Tools
+### github_get_pull_request
+Fetch a pull request by owner, repo, and pull request number.
+- Use when the user asks about PR status, changed files, checks, or review comments.
+- Return concise findings with links and actionable next steps.
+</instruction>`;
+
 export function assistantResponseForTurn(turnIndex: number) {
   return conversationAssistantResponses[turnIndex] ?? "I would answer using the submitted user request and the current prompt context.";
 }
@@ -161,26 +182,9 @@ Run both workspace builds before finishing.
     name: "Tools",
     icon: "tools",
     description: "Adds one agent skill and one MCP tool instruction block.",
-    content: `<skills>
-Here is a list of skills that contain domain specific knowledge.
-When the user's task falls within a skill domain, read the skill file before acting.
-<skill>
-<name>web-design-reviewer</name>
-<description>Review and remediate website UI issues through browser-driven inspection and source-level fixes across responsive layouts, accessibility, and visual consistency. Use when asked to review website design, check UI, fix layout issues, inspect accessibility contrast, or validate responsive behavior.</description>
-<file>C:\\Users\\developer\\.copilot\\skills\\web-design-reviewer\\SKILL.md</file>
-</skill>
-</skills>
+    content: `${toolsSkillsContent}
 
-<instruction forToolsWithPrefix="mcp_github">
-# GitHub MCP Server
-Use this server for GitHub repository, issue, pull request, commit, and workflow context.
-
-## Tools
-### github_get_pull_request
-Fetch a pull request by owner, repo, and pull request number.
-- Use when the user asks about PR status, changed files, checks, or review comments.
-- Return concise findings with links and actionable next steps.
-</instruction>`,
+${toolsInstructionContent}`,
   },
   {
     id: "custom-agent",
@@ -203,14 +207,25 @@ export function getPromptSections(selectedLayerIds: readonly string[], userReque
   const selected = new Set(selectedLayerIds);
   const sections: PromptSection[] = [
     { id: "system", label: "System prompt", content: formatPromptXml(baseSystem) },
-    ...promptPatchLayers
-      .filter((layer) => selected.has(layer.id))
-      .map((layer) => ({
-        id: layer.id,
-        label: layer.id === "instructions" ? "Custom instructions" : layer.name,
-        content: formatPromptXml(layer.content),
-      })),
   ];
+
+  for (const layer of promptPatchLayers) {
+    if (!selected.has(layer.id)) {
+      continue;
+    }
+
+    const content = layer.id === "instructions" && selected.has("tools")
+      ? mergeToolInstructionIntoInstructions(layer.content)
+      : layer.id === "tools"
+        ? toolLayerContent(selected.has("instructions"))
+        : layer.content;
+
+    sections.push({
+      id: layer.id,
+      label: layer.id === "instructions" ? "Custom instructions" : layer.name,
+      content: formatPromptXml(content),
+    });
+  }
 
   if (userRequest.trim().length > 0) {
     const trimmedUserRequest = userRequest.trim();
@@ -281,6 +296,22 @@ function formatPromptXml(value: string) {
       return formatted;
     })
     .join("\n");
+}
+
+function toolLayerContent(hasInstructionsLayer: boolean) {
+  if (hasInstructionsLayer) {
+    return toolsSkillsContent;
+  }
+
+  return `${toolsSkillsContent}
+
+<instructions>
+${toolsInstructionContent}
+</instructions>`;
+}
+
+function mergeToolInstructionIntoInstructions(value: string) {
+  return value.replace("</instructions>", `${toolsInstructionContent}\n</instructions>`);
 }
 
 function isClosingTag(value: string) {

@@ -274,6 +274,10 @@ test("context layer buttons apply and remove prompt diffs", async ({ page }) => 
   await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
   await expect(editor).toHaveValue(composePrompt(["tools"], composeConversationRequest([defaultUserRequest])));
   await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["tools"], composeConversationRequest([defaultUserRequest])));
+  const toolsOnlyPrompt = await editor.inputValue();
+  expect(toolsOnlyPrompt).toContain("<instructions>");
+  expect(toolsOnlyPrompt.indexOf("<instruction forToolsWithPrefix=\"mcp_github\">")).toBeGreaterThan(toolsOnlyPrompt.indexOf("<instructions>"));
+  expect(toolsOnlyPrompt.indexOf("<instruction forToolsWithPrefix=\"mcp_github\">")).toBeLessThan(toolsOnlyPrompt.indexOf("</instructions>"));
   await expect(editor).toHaveValue(/<workspace_info>/);
 });
 
@@ -293,6 +297,11 @@ test("context layers isolate canonical Copilot context sources", async ({ page }
 
   expect(await page.getByLabel("Plaintext editor").inputValue()).toContain(".github/copilot-instructions.md");
   await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt(allLayerIds, composeConversationRequest([defaultUserRequest])));
+  const promptWithAllLayers = await page.getByLabel("Plaintext editor").inputValue();
+  expect(promptWithAllLayers.match(/<instructions>/g)).toHaveLength(1);
+  expect(promptWithAllLayers.indexOf("<instruction forToolsWithPrefix=\"mcp_github\">")).toBeGreaterThan(promptWithAllLayers.indexOf("<instructions>"));
+  expect(promptWithAllLayers.indexOf("<instruction forToolsWithPrefix=\"mcp_github\">")).toBeLessThan(promptWithAllLayers.indexOf("</instructions>"));
+  expect(promptWithAllLayers.slice(promptWithAllLayers.indexOf("</instructions>"))).not.toContain("<instruction forToolsWithPrefix=\"mcp_github\">");
 });
 
 test("model selector changes context copy and meter width", async ({ page }) => {
@@ -364,6 +373,8 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
   await expect(page.getByRole("button", { name: "Previous conversation turn" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Next conversation turn" })).toBeDisabled();
+  expect(await invoiceTokenValue(page, "Conversation total")).toBe(firstTurnTotal);
+  expect(await invoiceOutputValue(page, "Conversation total")).toBe(await invoiceOutputValue(page, "Turn total"));
 
   for (let turn = 2; turn <= conversationUserRequests.length; turn += 1) {
     await submitButton.click();
@@ -381,10 +392,14 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
   expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceTokenValue(page, "Conversation total")).toBeGreaterThan(firstTurnTotal + fifthTurnTotal);
   expect(await invoiceOutputValue(page, "Conversation total")).toBeGreaterThan(await invoiceOutputValue(page, "Turn total"));
+  const fifthConversationTotal = await invoiceTokenValue(page, "Conversation total");
+  const fifthConversationOutputTotal = await invoiceOutputValue(page, "Conversation total");
 
   await page.getByRole("button", { name: "Previous conversation turn" }).click();
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 4 of 5");
   await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-previous/);
+  expect(await invoiceTokenValue(page, "Conversation total")).toBeLessThan(fifthConversationTotal);
+  expect(await invoiceOutputValue(page, "Conversation total")).toBeLessThan(fifthConversationOutputTotal);
   expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
   await expect(page.getByLabel("Chat message input")).toHaveValue("");
@@ -395,6 +410,8 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
     await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of 5`);
   }
   expect(await invoiceTokenValue(page, "Turn total")).toBe(firstTurnTotal);
+  expect(await invoiceTokenValue(page, "Conversation total")).toBe(firstTurnTotal);
+  expect(await invoiceOutputValue(page, "Conversation total")).toBe(await invoiceOutputValue(page, "Turn total"));
   expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
 
