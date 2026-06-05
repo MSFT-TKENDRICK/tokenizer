@@ -115,13 +115,12 @@ function creditCalculationTitle(total: InvoiceTotal, model: {
     return undefined;
   }
 
-  const uncachedInputTokens = Math.max(total.inputTokens - total.cachedTokens, 0);
-  const inputCredits = ((uncachedInputTokens / 1_000_000) * model.pricing.inputPerMillionTokensUsd) / 0.01;
+  const inputCredits = ((total.inputTokens / 1_000_000) * model.pricing.inputPerMillionTokensUsd) / 0.01;
   const cachedCredits = ((total.cachedTokens / 1_000_000) * model.pricing.cachedInputPerMillionTokensUsd) / 0.01;
   const outputCredits = ((total.outputTokens / 1_000_000) * model.pricing.outputPerMillionTokensUsd) / 0.01;
   return [
     `${formatAiCredits(total.aiCredits)} AI credits total`,
-    `Uncached input: ${formatNumber(uncachedInputTokens)} tokens x ${formatCurrency(model.pricing.inputPerMillionTokensUsd)}/1M = ${formatAiCredits(inputCredits)} credits`,
+    `Uncached input: ${formatNumber(total.inputTokens)} tokens x ${formatCurrency(model.pricing.inputPerMillionTokensUsd)}/1M = ${formatAiCredits(inputCredits)} credits`,
     `Cached input: ${formatNumber(total.cachedTokens)} tokens x ${formatCurrency(model.pricing.cachedInputPerMillionTokensUsd)}/1M = ${formatAiCredits(cachedCredits)} credits`,
     `Output: ${formatNumber(total.outputTokens)} tokens x ${formatCurrency(model.pricing.outputPerMillionTokensUsd)}/1M = ${formatAiCredits(outputCredits)} credits`,
   ].join("\n");
@@ -405,6 +404,7 @@ export default function App() {
       const uncachedInputTokens = Math.max(row.inputTokens - cachedTokens, 0);
       return {
         ...row,
+        inputTokens: uncachedInputTokens,
         cachedTokens,
         aiCredits: estimateMixedInputAiCredits(uncachedInputTokens, cachedTokens, selectedModel),
       };

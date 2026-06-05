@@ -360,6 +360,7 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
   const submitButton = page.getByRole("button", { name: "Submit user message" });
   await submitButton.click();
   const firstTurnTotal = await invoiceTokenValue(page, "Turn total");
+  expect(await invoiceCachedValue(page, "Turn total")).toBe(0);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
   await expect(page.getByRole("button", { name: "Previous conversation turn" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Next conversation turn" })).toBeDisabled();
@@ -370,8 +371,12 @@ test("conversation invoice pages navigate turn impact and cached totals", async 
   }
   await expect(submitButton).toBeDisabled();
   const fifthTurnTotal = await invoiceTokenValue(page, "Turn total");
-  expect(fifthTurnTotal).toBeGreaterThan(firstTurnTotal);
-  expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
+  const fifthTurnCachedTotal = await invoiceCachedValue(page, "Turn total");
+  expect(fifthTurnTotal).toBeLessThan(firstTurnTotal);
+  expect(fifthTurnCachedTotal).toBeGreaterThan(0);
+  expect(fifthTurnTotal + fifthTurnCachedTotal).toBeGreaterThan(firstTurnTotal);
+  expect(await invoiceTokenValue(page, "System prompt")).toBe(0);
+  expect(await invoiceCachedValue(page, "System prompt")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
   expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
   expect(await invoiceTokenValue(page, "Conversation total")).toBeGreaterThan(firstTurnTotal + fifthTurnTotal);
