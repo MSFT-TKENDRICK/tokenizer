@@ -285,12 +285,15 @@ export default function App() {
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
   const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
   const selectedTurnIndex = conversationTurns.length === 0 ? -1 : Math.min(invoicePageIndex, conversationTurns.length - 1);
+  const previewTurns = useMemo(
+    () => selectedTurnIndex >= 0
+      ? conversationTurns.slice(0, selectedTurnIndex + 1)
+      : [draftUserMessage].filter((message) => message.trim().length > 0),
+    [conversationTurns, draftUserMessage, selectedTurnIndex],
+  );
   const activeConversationRequest = useMemo(
-    () => composeConversationRequest(
-      selectedTurnIndex >= 0 ? conversationTurns.slice(0, selectedTurnIndex + 1) : [],
-      { includeAssistantResponses: true },
-    ),
-    [conversationTurns, selectedTurnIndex],
+    () => composeConversationRequest(previewTurns, { includeAssistantResponses: selectedTurnIndex >= 0 }),
+    [previewTurns, selectedTurnIndex],
   );
   const promptSections = useMemo(
     () => getPromptSections(selectedLayerIds, activeConversationRequest),
