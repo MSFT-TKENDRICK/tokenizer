@@ -22,6 +22,25 @@ testable. For each one:
 Keep facets focused. If an answer touches several requirements, prefer several small
 facets over one broad one — they are easier to ground and to test.
 
+### Derivative facets (inner-loop discoveries)
+
+Not every facet comes from the initial spec scan. The **inner loop** (BDD/TDD) is a
+prolific source of ambiguity: a test that can't be written, an unnamed edge case, a
+false assumption, a constraint the code reveals. Facets spawned this way are
+**derivative facets**. Treat them the same as any other facet, plus:
+
+- Record what triggered them: the requirement id under implementation and, if the
+  discovery refines an earlier facet, that facet id as the **parent** (e.g. a
+  `parent:` field or an explicit "Derived from: MSF-NNN" line) so the provenance
+  chain stays intact.
+- Decide the blast radius. If the derivative facet merely *enriches* understanding,
+  it is enough on its own and the inner loop can resume. If it *changes a
+  requirement's intent* (adds/splits/retires a requirement, relaxes a constraint,
+  changes acceptance criteria), it **must** be paired with an ADR and a SpecKit spec
+  update — and the squad must be re-grounded afterward.
+- If answering it needs the user, the orchestrator runs a **targeted re-interview**
+  (only the new question). You turn that answer into the facet; you do not invent it.
+
 ## ADRs (`docs/sdlc/adr/ADR-NNN.md`)
 
 When a decision **changes** the spec (not merely clarifies it), record an ADR:

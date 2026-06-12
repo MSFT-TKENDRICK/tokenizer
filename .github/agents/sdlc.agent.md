@@ -22,6 +22,49 @@ squad. Prefer calling the toolkit over re-deriving things by hand.
 - A SpecKit spec directory: `specs/NNN-slug/` (`spec.md`, optional `plan.md`, `tasks.md`).
 - The repository it will be implemented in (conventions in `DESIGN.md` and `.github/copilot-instructions.md`).
 
+## Two loops: outer (spec) and inner (implementation)
+
+This workflow runs as two nested loops. Keeping them distinct is what lets the
+squad move fast without drifting from the spec.
+
+- **Outer loop (spec/clarification loop)** — slow, human-in-the-loop. It owns the
+  *meaning* of the feature: detect ambiguities → interview the user → write
+  micro-spec facets and ADRs → forge/ground the squad → write ASSERT evals. The
+  outer loop decides **what** is true and **why**, and it is the only place the
+  spec's intent may change.
+- **Inner loop (implementation loop)** — fast, mostly autonomous. Per requirement,
+  each squad member runs BDD → TDD red → green → refactor and gathers evidence. The
+  inner loop decides **how** to satisfy a requirement that the outer loop has
+  already pinned down.
+
+**The inner loop feeds the outer loop.** Implementation is where hidden ambiguity
+surfaces: a test you can't write because the expected output is underspecified, a
+constraint the code reveals, an edge case the spec never named, an assumption that
+turns out false. When that happens the inner loop must **not** guess — it pauses and
+escalates to the outer loop:
+
+1. The squad member raises the discovery (what it hit, which requirement id, why it
+   blocks a red/green step).
+2. You open a **derivative facet** — a micro-spec facet spawned by an
+   implementation discovery rather than by the initial spec scan. It cites the
+   triggering requirement and, if it stems from an earlier facet, links that facet
+   as its parent so the provenance chain stays intact.
+3. If answering it needs the user, run a **targeted re-interview** (elicitation):
+   ask only the new question(s), one at a time. Don't re-run the whole interview.
+4. If the answer **revises a requirement** (changes intent, adds/splits/retires a
+   requirement, or relaxes a constraint), record an **ADR** and update the SpecKit
+   spec. Then **re-forge and re-ground** the squad and **regenerate the affected
+   ASSERT evals / BDD features / TDD entries** before the inner loop resumes — a
+   requirement change can change ownership, coverage, or acceptance criteria, so the
+   grounding proof must pass again.
+5. If the answer merely *enriches* (clarifies without changing intent), the
+   derivative facet is enough; resume the inner loop.
+
+Treat this as the steady state, not an exception: expect the inner loop to bounce
+back into the outer loop several times before a feature is done. Every bounce leaves
+a durable trail (facet → optional ADR → spec/eval/test regeneration) so the squad
+stays provably grounded after every revision.
+
 ## Workflow — do these in order
 
 ### 1. Survey & detect ambiguities
@@ -69,7 +112,7 @@ squad. Prefer calling the toolkit over re-deriving things by hand.
 - Use `node sdlc/bin/sdlc.mjs fleet docs/sdlc/NNN-slug/squad.manifest.json` to get
   the fleet dispatch prompt, or dispatch members yourself via the `task` tool.
 
-### 6. BDD → TDD per requirement
+### 6. BDD → TDD per requirement (inner loop)
 - The pipeline generated Gherkin features (`docs/sdlc/NNN-slug/features/`) and a TDD
   loop state (`tdd-loop.json`, one entry per requirement, all starting **red**).
 - For each requirement, each owning member runs **red → green → refactor**:
@@ -77,6 +120,13 @@ squad. Prefer calling the toolkit over re-deriving things by hand.
   2. implement the minimum to pass (green),
   3. refactor with tests green.
 - Keep `tdd-loop.json` updated as phases advance.
+- **Escalate, don't guess.** If a member cannot write the red test or make it green
+  because the requirement is ambiguous, contradictory, or silent on an edge case,
+  pause that entry and **bounce to the outer loop** (see "Two loops"): open a
+  derivative facet, re-interview the user if needed, and — if a requirement is
+  revised — record an ADR, update the spec, then re-forge/re-ground and regenerate
+  the affected evals/features/TDD entries before resuming. Mark the loop entry
+  `blocked` with the derivative facet id while it is escalated.
 
 ### 7. Evidence for every requirement
 - No requirement is "done" until its evidence exists. Required by default:
@@ -98,3 +148,7 @@ squad. Prefer calling the toolkit over re-deriving things by hand.
    after editing it; never read/write the main checkout.
 5. **Ask, don't assume**, on blocking ambiguities. Everything else, decide and record
    the decision as a facet/ADR.
+6. **Inner-loop discoveries go back to the outer loop.** When implementation reveals
+   ambiguity or a needed requirement change, raise a derivative facet (and an ADR +
+   spec update if intent changes) and re-ground before resuming — never patch around
+   a spec gap in code.
