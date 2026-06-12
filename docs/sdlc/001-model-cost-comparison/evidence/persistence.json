@@ -1,0 +1,41 @@
+{
+  "specId": "001",
+  "capability": "persistence",
+  "requirementIds": [
+    "FR-007"
+  ],
+  "generatedAt": "2026-06-12T17:49:42.697Z",
+  "required": [
+    "coverage",
+    "test-report",
+    "bdd-feature"
+  ],
+  "artifacts": [
+    {
+      "kind": "bdd-feature",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-verbose-doodle\\docs\\sdlc\\001-model-cost-comparison\\features\\persistence.feature",
+      "exists": true,
+      "bytes": 632,
+      "description": "BDD feature specification"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-verbose-doodle\\tests\\e2e\\accessibility.spec.ts",
+      "exists": true,
+      "bytes": 2689,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-verbose-doodle\\tests\\e2e\\tokenizer.spec.ts",
+      "exists": true,
+      "bytes": 31893,
+      "description": "Playwright automation spec"
+    }
+  ],
+  "complete": false,
+  "missing": [
+    "coverage",
+    "test-report"
+  ]
+}

@@ -15,7 +15,10 @@
     "typecheck": "tsc -b --pretty false",
     "design:lint": "designmd lint DESIGN.md",
     "design:fixtures": "node scripts/generate-design-fixture.mjs",
-    "design:visual-diff": "node scripts/visual-diff-target.mjs"
+    "design:visual-diff": "node scripts/visual-diff-target.mjs",
+    "sdlc": "node sdlc/bin/sdlc.mjs",
+    "sdlc:build": "npm --prefix sdlc run build",
+    "sdlc:test": "npm --prefix sdlc test"
   },
   "dependencies": {
     "react": "latest",

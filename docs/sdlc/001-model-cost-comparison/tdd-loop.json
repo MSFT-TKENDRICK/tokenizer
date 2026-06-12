@@ -1,0 +1,93 @@
+[
+  {
+    "requirementId": "FR-001",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-001.test.ts",
+    "featureFile": "tokenization.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "FR-002",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-002.test.ts",
+    "featureFile": "cost-estimation.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "FR-003",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-003.test.ts",
+    "featureFile": "cost-estimation.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "FR-004",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-004.test.ts",
+    "featureFile": "comparison.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "FR-005",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-005.test.ts",
+    "featureFile": "visualization.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "FR-006",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-006.test.ts",
+    "featureFile": "comparison.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "FR-007",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-007.test.ts",
+    "featureFile": "persistence.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "FR-008",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-008.test.ts",
+    "featureFile": "comparison.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "FR-009",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/FR-009.test.ts",
+    "featureFile": "comparison.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "NFR-001",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/NFR-001.test.ts",
+    "featureFile": "visualization.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "NFR-002",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/NFR-002.test.ts",
+    "featureFile": "cost-estimation.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "CON-001",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/CON-001.test.ts",
+    "featureFile": "cost-estimation.feature",
+    "notes": []
+  },
+  {
+    "requirementId": "CON-002",
+    "phase": "red",
+    "testFile": "tests/sdlc/model-cost-comparison/CON-002.test.ts",
+    "featureFile": "comparison.feature",
+    "notes": []
+  }
+]
