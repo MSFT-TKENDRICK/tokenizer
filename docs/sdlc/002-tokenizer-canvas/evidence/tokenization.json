@@ -1,0 +1,51 @@
+{
+  "specId": "002",
+  "capability": "tokenization",
+  "requirementIds": [
+    "FR-002"
+  ],
+  "generatedAt": "2026-06-12T19:01:26.182Z",
+  "required": [
+    "coverage",
+    "test-report",
+    "bdd-feature"
+  ],
+  "artifacts": [
+    {
+      "kind": "bdd-feature",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\docs\\sdlc\\002-tokenizer-canvas\\features\\tokenization.feature",
+      "exists": true,
+      "bytes": 735,
+      "description": "BDD feature specification"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\tests\\e2e\\accessibility.spec.ts",
+      "exists": true,
+      "bytes": 2689,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\tests\\e2e\\tokenizer.spec.ts",
+      "exists": true,
+      "bytes": 31893,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "coverage",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/coverage/coverage-summary.json",
+      "exists": true,
+      "description": "v8 coverage of web/tokenizer.mjs (82.6% lines / 80% funcs) from tests/sdlc/tokenizer-canvas/FR-002.test.ts"
+    },
+    {
+      "kind": "test-report",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/test-report.json",
+      "exists": true,
+      "description": "vitest JSON report — FR-002 tokenization parity, 13/13 passing"
+    }
+  ],
+  "complete": true,
+  "missing": [],
+  "auditNote": "Satisfied by the SDLC orchestrator: web/tokenizer.mjs proven a 1:1 port of src/lib/tokenizer.ts. FR-002 is pure logic; no visual artifact required for this capability."
+}
