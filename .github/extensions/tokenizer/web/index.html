@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tokenizer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#text-input">Skip to input</a>
+    <header class="hero">
+      <p class="eyebrow">GitHub Copilot</p>
+      <h1 id="app-title">Tokenizer</h1>
+      <p class="subtitle">
+        Tokenize text and compare input cost across Copilot models — live, in
+        your side panel.
+      </p>
+    </header>
+
+    <main class="layout" aria-labelledby="app-title">
+      <section class="card input-section" aria-labelledby="input-label">
+        <div class="section-head">
+          <label id="input-label" for="text-input">Input text</label>
+          <div class="input-actions">
+            <button id="sample-btn" type="button" class="ghost-btn">Sample</button>
+            <button id="clear-btn" type="button" class="ghost-btn">Clear</button>
+          </div>
+        </div>
+        <textarea
+          id="text-input"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="off"
+          placeholder="Paste or type text here…"
+          aria-describedby="summary-region"
+        ></textarea>
+      </section>
+
+      <section
+        id="summary-region"
+        class="card summary-section"
+        aria-label="Summary metrics"
+      >
+        <dl class="stats">
+          <div class="stat stat-primary">
+            <dt>Tokens</dt>
+            <dd id="stat-tokens">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Characters</dt>
+            <dd id="stat-characters">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Bytes</dt>
+            <dd id="stat-bytes">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Words</dt>
+            <dd id="stat-words">0</dd>
+          </div>
+          <div class="stat">
+            <dt>Lines</dt>
+            <dd id="stat-lines">0</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="card tokens-section" aria-labelledby="tokens-heading">
+        <div class="section-head">
+          <h2 id="tokens-heading">Tokens</h2>
+          <label class="toggle">
+            <input type="checkbox" id="label-toggle" />
+            Label categories
+          </label>
+        </div>
+        <div id="legend" class="legend" aria-label="Token category legend"></div>
+        <div
+          id="token-stream"
+          class="token-stream"
+          role="list"
+          aria-label="Token stream"
+        >
+          <p class="empty-note" id="tokens-empty">No tokens yet — start typing above.</p>
+        </div>
+        <p class="muted token-overflow" id="token-overflow" hidden></p>
+      </section>
+
+      <section class="card models-section" aria-labelledby="models-heading">
+        <h2 id="models-heading">Model input cost</h2>
+        <p class="muted" id="models-caption">
+          Estimated input cost for the current text across Copilot models.
+          1 AI credit = $0.01. Rows flagged
+          <span class="inline-flag">▲ over limit</span> cannot fit the current
+          token count.
+        </p>
+        <div class="table-wrap">
+          <table class="models-table" aria-describedby="models-caption">
+            <thead>
+              <tr>
+                <th scope="col">Model</th>
+                <th scope="col">Provider</th>
+                <th scope="col" class="num" aria-sort="ascending">
+                  <button type="button" class="sort-btn" data-sort="usd">
+                    Input (USD) <span class="sort-caret" aria-hidden="true">▲</span>
+                  </button>
+                </th>
+                <th scope="col" class="num">
+                  <button type="button" class="sort-btn" data-sort="credits">
+                    Input (credits) <span class="sort-caret" aria-hidden="true"></span>
+                  </button>
+                </th>
+                <th scope="col" class="num">
+                  <button type="button" class="sort-btn" data-sort="context">
+                    Context use <span class="sort-caret" aria-hidden="true"></span>
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="models-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <p class="muted">
+        Estimates only. Pricing and context windows mirror the tokenizer web app
+        and may differ from live billing. Original work — not affiliated with or
+        copied from any third-party tokenizer.
+      </p>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

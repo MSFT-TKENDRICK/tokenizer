@@ -1,0 +1,81 @@
+{
+  "specId": "002",
+  "capability": "canvas-integration",
+  "requirementIds": [
+    "FR-001",
+    "FR-008",
+    "NFR-003"
+  ],
+  "generatedAt": "2026-06-12T19:01:26.180Z",
+  "required": [
+    "coverage",
+    "test-report",
+    "bdd-feature",
+    "playwright-spec",
+    "screenshot",
+    "video",
+    "playwright-trace"
+  ],
+  "artifacts": [
+    {
+      "kind": "bdd-feature",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\docs\\sdlc\\002-tokenizer-canvas\\features\\canvas-integration.feature",
+      "exists": true,
+      "bytes": 1807,
+      "description": "BDD feature specification"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\tests\\e2e\\accessibility.spec.ts",
+      "exists": true,
+      "bytes": 2689,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\tests\\e2e\\tokenizer.spec.ts",
+      "exists": true,
+      "bytes": 31893,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "coverage",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/coverage/coverage-summary.json",
+      "exists": true,
+      "description": "v8 coverage of web/tokenizer.mjs + web/models.mjs from tests/sdlc/tokenizer-canvas"
+    },
+    {
+      "kind": "test-report",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/test-report.json",
+      "exists": true,
+      "description": "vitest JSON report — 54 SDLC unit tests passing"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "tests/sdlc/tokenizer-canvas/canvas.visual.spec.ts",
+      "exists": true,
+      "description": "Playwright canvas visual spec (served via tests/sdlc/tokenizer-canvas/static-server.mjs)"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/screenshots/FR-006-table-sorted.png",
+      "exists": true,
+      "description": "Playwright screenshot"
+    },
+    {
+      "kind": "video",
+      "path": "docs\\sdlc\\002-tokenizer-canvas\\evidence\\playwright-results\\canvas.visual--FR-003-FR-0-4f8c9-date-live-as-the-user-types-chromium\\video.webm",
+      "exists": true,
+      "description": "Playwright video (webm)"
+    },
+    {
+      "kind": "playwright-trace",
+      "path": "docs\\sdlc\\002-tokenizer-canvas\\evidence\\playwright-results\\canvas.visual--FR-003-FR-0-4f8c9-date-live-as-the-user-types-chromium\\trace.zip",
+      "exists": true,
+      "description": "Playwright trace (zip)"
+    }
+  ],
+  "complete": true,
+  "missing": [],
+  "auditNote": "Satisfied by the SDLC orchestrator. FR-001/FR-008/NFR-003 runtime-validated by top-level orchestrator (ready, loopback url, HTTP 200, set_text/get_summary, no stdout); FR-008 get_summary numbers cross-validated by unit tests; iframe serving reproduced by the SDLC static server + Playwright."
+}
