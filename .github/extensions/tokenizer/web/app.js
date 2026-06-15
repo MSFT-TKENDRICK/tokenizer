@@ -450,6 +450,11 @@ function setupLiveChat() {
     liveEls.section.hidden = false;
     populateModels(status.models);
     if (status.engineStatus === "ready") {
+      if (!status.authenticated) {
+        setLiveStatus("error", "Sign in to GitHub Copilot to chat.");
+        liveEls.send.disabled = true;
+        return false;
+      }
       setLiveStatus(
         "ready",
         status.login ? `Ready · signed in as ${status.login}` : "Ready",

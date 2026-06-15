@@ -12,6 +12,7 @@ import { tokenize } from "../../src/lib/tokenizer";
 const pendingFirstPrompt = composePrompt([], composeConversationRequest([defaultUserRequest]));
 const allLayerIds = promptPatchLayers.map((layer) => layer.id);
 const heroHeading = ">_ GitHub Copilot Tokenization";
+const simulatedEmptyTranscript = "Submit a sample message to walk through a simulated Copilot conversation.";
 
 test.beforeEach(async ({ page }, testInfo) => {
   const browserErrors: string[] = [];
@@ -38,7 +39,7 @@ test("renders the tokenizer workspace with the default chat view", async ({ page
   await expect(page.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: heroHeading })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Text, tokens, and token IDs" })).toHaveCount(0);
-  await expect(page.getByLabel("Chat transcript")).toHaveText("");
+  await expect(page.getByLabel("Chat transcript")).toHaveText(simulatedEmptyTranscript);
   await expect(page.getByLabel("Chat transcript")).not.toContainText("<workspace_info>");
   await expect(page.getByLabel("Chat transcript")).not.toContainText("<userRequest>");
   await expect(page.getByLabel("Chat transcript")).not.toContainText(defaultUserRequest);
@@ -236,7 +237,7 @@ test("Reset simulation restores the sample start state", async ({ page }) => {
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
 
   await resetButton.click();
-  await expect(page.getByLabel("Chat transcript")).toHaveText("");
+  await expect(page.getByLabel("Chat transcript")).toHaveText(simulatedEmptyTranscript);
   await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 0 of 0");
   await expect(page.getByRole("button", { name: /Workspace context/ })).toHaveAttribute("aria-pressed", "false");

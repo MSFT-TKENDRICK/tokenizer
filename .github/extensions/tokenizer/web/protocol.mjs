@@ -5,7 +5,7 @@
 // Kept intentionally tiny (constants + id map + helpers) so the JS/TS
 // duplication this repo already uses for tokenizer/models stays low-risk.
 
-export const LIVE_ENDPOINTS = { status: "status", chat: "chat" };
+export const LIVE_ENDPOINTS = { status: "status", chat: "chat", reset: "reset" };
 
 // Server-Sent Event names emitted by POST /chat.
 export const SSE_EVENTS = {

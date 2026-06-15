@@ -22,16 +22,18 @@ export interface LiveChatHandlers {
 }
 
 export interface LiveClient {
-  getStatus(): Promise<LiveStatus>;
+  getStatus(options?: { warm?: boolean }): Promise<LiveStatus>;
   streamChat(request: LiveChatRequest, handlers?: LiveChatHandlers): Promise<void>;
+  reset(conversationId: string): Promise<void>;
   readonly token: string | undefined;
 }
 
 export function createLiveClient(baseUrl: string): LiveClient {
   let token: string | undefined;
 
-  async function getStatus(): Promise<LiveStatus> {
-    const res = await fetch(joinLivePath(baseUrl, LIVE_ENDPOINTS.status), { cache: "no-store" });
+  async function getStatus(options?: { warm?: boolean }): Promise<LiveStatus> {
+    const suffix = options?.warm === false ? "?warm=0" : "";
+    const res = await fetch(joinLivePath(baseUrl, LIVE_ENDPOINTS.status) + suffix, { cache: "no-store" });
     if (!res.ok) throw new Error(`live status ${res.status}`);
     const data = (await res.json()) as LiveStatus;
     token = data.token;
@@ -107,9 +109,26 @@ export function createLiveClient(baseUrl: string): LiveClient {
     }
   }
 
+  async function reset(conversationId: string): Promise<void> {
+    try {
+      await fetch(joinLivePath(baseUrl, LIVE_ENDPOINTS.reset), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ conversationId }),
+        keepalive: true,
+      });
+    } catch {
+      /* best effort: the SDK session TTL-evicts if this never lands */
+    }
+  }
+
   return {
     getStatus,
     streamChat,
+    reset,
     get token() {
       return token;
     },

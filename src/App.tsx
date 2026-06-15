@@ -306,18 +306,21 @@ export default function App() {
   const live = useLiveChat();
 
   const isLive = mode === "live";
-  const liveReady = isLive && live.available && live.engineStatus === ENGINE_STATUS.ready;
+  const liveReady = isLive && live.available && live.authenticated && live.engineStatus === ENGINE_STATUS.ready;
+  const liveSignedOut = isLive && live.available && !live.authenticated && live.engineStatus === ENGINE_STATUS.ready;
   const liveWarming = isLive && live.available && live.engineStatus === ENGINE_STATUS.warming;
   const liveUnavailable = isLive && live.probed && !live.available;
 
-  // In Live mode, swap the real Copilot answer in for the canned simulation —
-  // but only once a turn has finalized (done/error), so streaming turns keep a
-  // 0-token "pending" output row instead of flashing an unrelated estimate.
+  // In Live mode, swap the real Copilot answer in for the canned simulation. A
+  // finalized turn contributes its real (possibly empty) text; a pending,
+  // streaming, or absent turn contributes "" so the prompt + invoice stay at 0
+  // and we never fall back to unrelated simulated text.
   const liveResponseResolver = useCallback<ResponseResolver>(
     (turnIndex) => {
       if (!isLive) return undefined;
       const entry = live.liveResponses.get(turnIndex);
-      return entry && entry.status !== "streaming" ? entry.text : undefined;
+      if (entry && entry.status !== "streaming") return entry.text;
+      return "";
     },
     [isLive, live.liveResponses],
   );
@@ -573,7 +576,7 @@ export default function App() {
     setInvoiceDirection(0);
     setViewMode("chat");
     if (isLive) {
-      live.clear();
+      live.reset(conversationId);
       setConversationId(createConversationId());
     }
     scrollPlainEditorTo(nextText);
@@ -581,15 +584,24 @@ export default function App() {
 
   function switchMode(nextMode: ChatMode) {
     if (nextMode === mode) return;
+    // A mode switch is a conversation boundary: simulated turns aren't real SDK
+    // turns (and vice versa), so carrying the transcript/invoice across modes would
+    // blank out existing turns or overwrite real answers with canned ones. Dispose
+    // any live session we're leaving and start a fresh conversation.
+    if (isLive) live.reset(conversationId);
+    else live.clear();
+    setConversationTurns([]);
+    setInvoicePageIndex(0);
+    setInvoiceDirection(0);
+    setViewMode("chat");
+    setConversationId(createConversationId());
     if (nextMode === "live") {
       setMode("live");
       setDraftUserMessage("");
-      setViewMode("chat");
       void live.refreshStatus();
     } else {
-      live.abort();
       setMode("simulated");
-      setDraftUserMessage(conversationUserRequests[conversationTurns.length] ?? "");
+      setDraftUserMessage(defaultUserRequest);
     }
   }
 
@@ -648,27 +660,31 @@ export default function App() {
 
   const liveStatusMessage = liveUnavailable
     ? "Live unavailable — start the Copilot CLI, then reload."
-    : liveWarming
-      ? "Starting Copilot runtime…"
-      : liveReady
-        ? live.login
-          ? `Live · signed in as ${live.login}`
-          : "Live · ready"
-        : isLive
-          ? "Checking Copilot runtime…"
-          : "";
+    : liveSignedOut
+      ? "Live · sign in to GitHub Copilot to chat."
+      : liveWarming
+        ? "Starting Copilot runtime…"
+        : liveReady
+          ? live.login
+            ? `Live · signed in as ${live.login}`
+            : "Live · ready"
+          : isLive
+            ? "Checking Copilot runtime…"
+            : "";
   const selectedLiveTurn = isLive && selectedTurnIndex >= 0 ? live.liveResponses.get(selectedTurnIndex) : undefined;
   const selectedLiveUsage = selectedLiveTurn?.usage;
   const submitButtonTitle = isLive
     ? liveUnavailable
       ? "Live runtime unavailable"
-      : liveWarming
-        ? "Starting Copilot runtime…"
-        : live.isStreaming
-          ? "Waiting for the current response…"
-          : draftUserMessage.trim().length === 0
-            ? "Type a message to send"
-            : "Send message to Copilot"
+      : liveSignedOut
+        ? "Sign in to GitHub Copilot to chat"
+        : liveWarming
+          ? "Starting Copilot runtime…"
+          : live.isStreaming
+            ? "Waiting for the current response…"
+            : draftUserMessage.trim().length === 0
+              ? "Type a message to send"
+              : "Send message to Copilot"
     : canSubmitUserMessage
       ? "Submit user message"
       : "No more sample messages";
@@ -741,7 +757,12 @@ export default function App() {
                   aria-pressed={isLive}
                   className={isLive ? "active" : ""}
                   type="button"
-                  title="Use ambient GitHub Copilot auth for real chat responses"
+                  disabled={live.probed && !live.available && !isLive}
+                  title={
+                    live.probed && !live.available
+                      ? "Live unavailable in this environment"
+                      : "Use ambient GitHub Copilot auth for real chat responses"
+                  }
                   onClick={() => switchMode("live")}
                 >
                   Live
@@ -749,7 +770,7 @@ export default function App() {
               </div>
               {isLive ? (
                 <p
-                  className={`live-status live-status-${liveUnavailable ? "error" : liveReady ? "ready" : "warming"}`}
+                  className={`live-status live-status-${liveUnavailable || liveSignedOut ? "error" : liveReady ? "ready" : "warming"}`}
                   role="status"
                   aria-live="polite"
                 >

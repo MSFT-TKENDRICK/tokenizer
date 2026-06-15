@@ -19,6 +19,20 @@ function safeEqual(a, b) {
   return timingSafeEqual(left, right);
 }
 
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+
+// Anti-DNS-rebinding: the ambient-auth token + chat are only served to loopback
+// origins. The server already binds 127.0.0.1, but a rebound attacker page would
+// reach it carrying its own Host header — reject anything that isn't loopback.
+// A missing Host (non-browser local client) is allowed since the socket is
+// already loopback-bound.
+function isLoopbackHost(req) {
+  const host = req.headers?.host;
+  if (!host) return true;
+  const hostname = host.replace(/:\d+$/, "").toLowerCase();
+  return LOOPBACK_HOSTS.has(hostname);
+}
+
 function sendJson(res, statusCode, body) {
   const payload = JSON.stringify(body);
   res.writeHead(statusCode, {
@@ -73,16 +87,28 @@ export async function handleLiveRequest(req, res, service, { basePath, token }) 
   const path = (req.url || "").split("?")[0].replace(/\/+$/, "");
   const statusPath = `${base}/${LIVE_ENDPOINTS.status}`;
   const chatPath = `${base}/${LIVE_ENDPOINTS.chat}`;
+  const resetPath = `${base}/${LIVE_ENDPOINTS.reset}`;
 
-  if (path !== statusPath && path !== chatPath) return false;
+  if (path !== statusPath && path !== chatPath && path !== resetPath) return false;
+
+  // Only serve the token + chat to loopback origins (defends against a rebound
+  // attacker hostname that resolves to 127.0.0.1).
+  if (!isLoopbackHost(req)) {
+    sendJson(res, 403, { error: "forbidden" });
+    return true;
+  }
 
   if (path === statusPath) {
     if (req.method !== "GET") {
       sendJson(res, 405, { error: "method not allowed" });
       return true;
     }
+    // The mount probe asks with ?warm=0 to gate the Live toggle without spawning
+    // the Copilot runtime; switching into Live (no param) warms it.
+    const query = (req.url || "").split("?")[1] ?? "";
+    const shouldWarm = new URLSearchParams(query).get("warm") !== "0";
     try {
-      const status = await service.status();
+      const status = await service.status({ warm: shouldWarm });
       sendJson(res, 200, { ...status, token: status.available ? token : undefined });
     } catch (error) {
       sendJson(res, 200, {
@@ -92,6 +118,36 @@ export async function handleLiveRequest(req, res, service, { basePath, token }) 
         models: [],
         error: String(error?.message ?? error),
       });
+    }
+    return true;
+  }
+
+  if (path === resetPath) {
+    // Dispose the SDK session backing a conversation when the user resets or
+    // leaves Live mode, instead of waiting for TTL/LRU eviction. Bearer-gated like
+    // /chat since it mutates engine state.
+    if (req.method !== "POST") {
+      sendJson(res, 405, { error: "method not allowed" });
+      return true;
+    }
+    const resetAuth = req.headers["authorization"] || "";
+    const resetBearer = resetAuth.startsWith("Bearer ") ? resetAuth.slice(7) : "";
+    if (!token || !safeEqual(resetBearer, token)) {
+      sendJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    let resetBody;
+    try {
+      resetBody = await readJsonBody(req);
+    } catch (error) {
+      sendJson(res, 400, { error: String(error?.message ?? error) });
+      return true;
+    }
+    try {
+      await service.reset?.(resetBody?.conversationId);
+      sendJson(res, 200, { ok: true });
+    } catch (error) {
+      sendJson(res, 200, { ok: false, error: String(error?.message ?? error) });
     }
     return true;
   }
@@ -125,8 +181,14 @@ export async function handleLiveRequest(req, res, service, { basePath, token }) 
   res.flushHeaders?.();
 
   const controller = new AbortController();
-  const onClose = () => controller.abort();
-  req.on("close", onClose);
+  // Abort the real Copilot turn when the client goes away. The disconnect signal
+  // for a POST/SSE response is the RESPONSE socket closing (`res` 'close'), not the
+  // already-consumed request stream (`req` 'close' never fires here). Guard on
+  // writableEnded so our own res.end() in `finally` doesn't trip a spurious abort.
+  const onClose = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  res.on("close", onClose);
 
   writeSseEvent(res, SSE_EVENTS.ready, { conversationId: body?.conversationId });
 
@@ -146,7 +208,7 @@ export async function handleLiveRequest(req, res, service, { basePath, token }) 
       writeSseEvent(res, SSE_EVENTS.error, { message: String(error?.message ?? "live chat failed") });
     }
   } finally {
-    req.off?.("close", onClose);
+    res.off?.("close", onClose);
     writeSseEvent(res, SSE_EVENTS.done, {});
     res.end();
   }

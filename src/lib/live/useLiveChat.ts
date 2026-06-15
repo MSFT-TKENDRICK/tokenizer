@@ -22,10 +22,11 @@ export interface UseLiveChat {
   liveVersion: number;
   streamingTurn: number | null;
   isStreaming: boolean;
-  refreshStatus: () => Promise<void>;
+  refreshStatus: (options?: { warm?: boolean }) => Promise<void>;
   send: (turnIndex: number, conversationId: string, model: string, message: string) => Promise<void>;
   abort: () => void;
   clear: () => void;
+  reset: (conversationId: string) => void;
   subscribeStream: (listener: () => void) => () => void;
   getStreamVersion: () => number;
   readStream: (turnIndex: number) => string;
@@ -55,6 +56,9 @@ export function useLiveChat(): UseLiveChat {
   const listenersRef = useRef(new Set<() => void>());
   const rafRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Monotonic send generation: a late-settling stale send must not clobber the
+  // shared stream state (or commit) once a newer send has taken over.
+  const sendIdRef = useRef(0);
 
   const flush = useCallback(() => {
     rafRef.current = null;
@@ -79,11 +83,11 @@ export function useLiveChat(): UseLiveChat {
     };
   }, []);
 
-  const refreshStatus = useCallback(async () => {
+  const refreshStatus = useCallback(async (options?: { warm?: boolean }) => {
     const client = clientRef.current;
     if (!client) return;
     try {
-      const next = await client.getStatus();
+      const next = await client.getStatus(options);
       setStatus(next);
     } catch {
       setStatus({ available: false, authenticated: false, engineStatus: ENGINE_STATUS.unavailable, models: [] });
@@ -99,6 +103,14 @@ export function useLiveChat(): UseLiveChat {
     return () => clearTimeout(timer);
   }, [status, refreshStatus]);
 
+  // Probe availability once on mount so the UI can gate the Live toggle (disable it
+  // on hosts with no engine) before the user ever switches into a dead Live mode.
+  // Use the non-warming probe so simulated-only users never spawn the Copilot
+  // runtime — warming stays lazy until the user actually switches into Live.
+  useEffect(() => {
+    void refreshStatus({ warm: false });
+  }, [refreshStatus]);
+
   const send = useCallback(
     async (turnIndex: number, conversationId: string, model: string, message: string) => {
       const client = clientRef.current;
@@ -107,6 +119,8 @@ export function useLiveChat(): UseLiveChat {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
+      const myId = ++sendIdRef.current;
+      const isCurrent = () => sendIdRef.current === myId;
 
       streamRef.current = { turn: turnIndex, text: "" };
       scheduleFlush();
@@ -123,7 +137,7 @@ export function useLiveChat(): UseLiveChat {
           { conversationId, model, message, signal: controller.signal },
           {
             onDelta: (delta) => {
-              if (streamRef.current.turn !== turnIndex) return;
+              if (!isCurrent() || streamRef.current.turn !== turnIndex) return;
               streamRef.current = { turn: turnIndex, text: streamRef.current.text + delta };
               scheduleFlush();
             },
@@ -138,16 +152,18 @@ export function useLiveChat(): UseLiveChat {
             },
           },
         );
-        const committed = finalText ?? streamRef.current.text;
-        setLiveResponses((prev) =>
-          new Map(prev).set(turnIndex, {
-            text: committed,
-            status: errorMessage ? "error" : "done",
-            usage,
-            error: errorMessage,
-          }),
-        );
-        setLiveVersion((value) => value + 1);
+        if (!controller.signal.aborted) {
+          const committed = finalText ?? streamRef.current.text;
+          setLiveResponses((prev) =>
+            new Map(prev).set(turnIndex, {
+              text: committed,
+              status: errorMessage ? "error" : "done",
+              usage,
+              error: errorMessage,
+            }),
+          );
+          setLiveVersion((value) => value + 1);
+        }
       } catch (error) {
         if (!controller.signal.aborted) {
           setLiveResponses((prev) =>
@@ -160,11 +176,15 @@ export function useLiveChat(): UseLiveChat {
           setLiveVersion((value) => value + 1);
         }
       } finally {
-        if (abortRef.current === controller) abortRef.current = null;
-        streamRef.current = { turn: null, text: "" };
-        scheduleFlush();
-        setStreamingTurn(null);
-        setIsStreaming(false);
+        // Only the current send owns the shared stream/streaming state; a stale
+        // send settling after a newer one started must not reset it.
+        if (isCurrent()) {
+          abortRef.current = null;
+          streamRef.current = { turn: null, text: "" };
+          scheduleFlush();
+          setStreamingTurn(null);
+          setIsStreaming(false);
+        }
       }
     },
     [scheduleFlush],
@@ -183,6 +203,17 @@ export function useLiveChat(): UseLiveChat {
     setStreamingTurn(null);
     setIsStreaming(false);
   }, [scheduleFlush]);
+
+  const reset = useCallback(
+    (conversationId: string) => {
+      // Tell the backend to dispose this conversation's SDK session, then drop all
+      // local live state. Fire-and-forget: the UI has already moved on, and the
+      // session TTL-evicts if the request never lands.
+      clientRef.current?.reset(conversationId);
+      clear();
+    },
+    [clear],
+  );
 
   const subscribeStream = useCallback((listener: () => void) => {
     listenersRef.current.add(listener);
@@ -216,6 +247,7 @@ export function useLiveChat(): UseLiveChat {
     send,
     abort,
     clear,
+    reset,
     subscribeStream,
     getStreamVersion,
     readStream,

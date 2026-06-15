@@ -1,8 +1,8 @@
 // TS mirror of .github/extensions/tokenizer/web/protocol.mjs for the React app.
-// A Vitest (protocol.parity.test.ts) deep-equals the constant values so the
+// A Vitest (protocol.parity.test.mjs) deep-equals the constant values so the
 // JS/TS seam can't silently drift. Keep the two files in lockstep.
 
-export const LIVE_ENDPOINTS = { status: "status", chat: "chat" } as const;
+export const LIVE_ENDPOINTS = { status: "status", chat: "chat", reset: "reset" } as const;
 
 export const SSE_EVENTS = {
   ready: "ready",

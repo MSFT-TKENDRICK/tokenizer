@@ -27,13 +27,20 @@ export function createLiveService({ resolve, logger } = {}) {
   let engineStatus = ENGINE_STATUS.unavailable;
   let startPromise = null;
   let runtime = null; // { client, auth, models:[{id,name}], baseDirectory }
+  let disposed = false;
   const sessions = new Map(); // conversationId -> { session, sdkModelId, lastUsed, busy }
+  const pendingSessions = new Map(); // conversationId -> Promise<entry> (in-flight create)
 
   function available() {
     return resolver() != null;
   }
 
   async function ensureRuntime() {
+    // Check disposed BEFORE returning the cached runtime: every session-create path
+    // funnels through here, so this is the single choke point that guarantees no new
+    // SDK session/subprocess is spawned once teardown has begun (even if a late
+    // setModel failure re-routes an in-flight chat into acquireFreshSession).
+    if (disposed) throw new Error("Live service disposed");
     if (runtime) return runtime;
     if (!startPromise) {
       const resolved = resolver();
@@ -46,25 +53,47 @@ export function createLiveService({ resolve, logger } = {}) {
         const sdk = await resolved.load();
         const { CopilotClient, RuntimeConnection } = sdk;
         const baseDirectory = mkdtempSync(join(tmpdir(), "copilot-tokenizer-live-"));
-        const client = new CopilotClient({
-          mode: "empty",
-          baseDirectory,
-          connection: RuntimeConnection.forStdio({ path: resolved.cliPath }),
-          logLevel: "error",
-        });
-        await client.start();
-        const [auth, models] = await Promise.all([
-          client.getAuthStatus().catch(() => ({ isAuthenticated: false })),
-          client.listModels().catch(() => []),
-        ]);
-        runtime = {
-          client,
-          auth,
-          baseDirectory,
-          models: models.map((m) => ({ id: m.id, name: m.name })),
-        };
-        engineStatus = ENGINE_STATUS.ready;
-        return runtime;
+        let client;
+        try {
+          client = new CopilotClient({
+            mode: "empty",
+            baseDirectory,
+            connection: RuntimeConnection.forStdio({ path: resolved.cliPath }),
+            logLevel: "error",
+          });
+          await client.start();
+          const [auth, models] = await Promise.all([
+            client.getAuthStatus().catch(() => ({ isAuthenticated: false })),
+            client.listModels().catch(() => []),
+          ]);
+          // dispose() may have run while we were warming; don't publish a runtime
+          // onto a discarded service — that would orphan the spawned subprocess.
+          if (disposed) throw new Error("Live service disposed during warm-up");
+          runtime = {
+            client,
+            auth,
+            baseDirectory,
+            models: models.map((m) => ({ id: m.id, name: m.name })),
+          };
+          engineStatus = ENGINE_STATUS.ready;
+          return runtime;
+        } catch (error) {
+          // Tear down the partially-started client + temp dir on any failure so a
+          // failed/aborted warm-up never leaks a process or directory.
+          if (client) {
+            try {
+              await client.stop();
+            } catch {
+              /* best effort */
+            }
+          }
+          try {
+            rmSync(baseDirectory, { recursive: true, force: true });
+          } catch {
+            /* best effort */
+          }
+          throw error;
+        }
       })().catch((error) => {
         engineStatus = ENGINE_STATUS.unavailable;
         startPromise = null;
@@ -84,8 +113,8 @@ export function createLiveService({ resolve, logger } = {}) {
     }
   }
 
-  async function status() {
-    warm();
+  async function status({ warm: shouldWarm = true } = {}) {
+    if (shouldWarm) warm();
     if (!available()) {
       return { available: false, authenticated: false, engineStatus: ENGINE_STATUS.unavailable, models: [] };
     }
@@ -104,7 +133,9 @@ export function createLiveService({ resolve, logger } = {}) {
   function resolveModelId(catalogModelId) {
     const mapped = toSdkModelId(catalogModelId);
     const models = runtime?.models ?? [];
-    if (models.length === 0) return mapped ?? "auto";
+    // Model list unknown (listModels failed/empty): fall back to "auto", which the
+    // runtime always accepts, rather than forwarding an unvalidated catalog id.
+    if (models.length === 0) return "auto";
     if (mapped && models.some((m) => m.id === mapped)) return mapped;
     return models.some((m) => m.id === "auto") ? "auto" : models[0].id;
   }
@@ -146,32 +177,89 @@ export function createLiveService({ resolve, logger } = {}) {
     }
   }
 
-  async function getSession(conversationId, sdkModelId) {
-    let entry = sessions.get(conversationId);
-    if (entry && entry.sdkModelId !== sdkModelId) {
-      try {
-        await entry.session.setModel(sdkModelId);
-        entry.sdkModelId = sdkModelId;
-      } catch {
-        await disposeSession(conversationId);
-        entry = undefined;
-      }
+  // Atomically reserve an entry for a turn. Synchronous (no await between the busy
+  // check and the set) so two concurrent callers can never both win the lock.
+  function reserve(entry) {
+    if (entry.busy) {
+      const error = new Error("conversation already has a response in flight");
+      error.code = "busy";
+      throw error;
     }
-    if (!entry) {
-      const { client } = await ensureRuntime();
-      const session = await client.createSession({
-        model: sdkModelId,
-        availableTools: [],
-        streaming: true,
-        onPermissionRequest: denyAll,
-      });
-      entry = { session, sdkModelId, lastUsed: Date.now(), busy: false };
-      sessions.set(conversationId, entry);
+    entry.busy = true;
+    entry.lastUsed = Date.now();
+  }
+
+  // Create (or join an in-flight create of) a session for a brand-new conversation,
+  // then reserve it. Dedupes concurrent first-creates so two racing requests can't
+  // each spawn an SDK session and orphan one of them.
+  async function acquireFreshSession(conversationId, sdkModelId) {
+    let pending = pendingSessions.get(conversationId);
+    if (!pending) {
+      pending = (async () => {
+        const { client } = await ensureRuntime();
+        // dispose() may have flipped between ensureRuntime resolving and the create
+        // below — never spawn a subprocess we'd immediately orphan. (Defense in depth
+        // with ensureRuntime's own disposed guard.)
+        if (disposed) {
+          const error = new Error("Live service disposed");
+          error.code = "disposed";
+          throw error;
+        }
+        const session = await client.createSession({
+          model: sdkModelId,
+          availableTools: [],
+          streaming: true,
+          onPermissionRequest: denyAll,
+        });
+        const created = { session, sdkModelId, lastUsed: Date.now(), busy: false };
+        sessions.set(conversationId, created);
+        return created;
+      })();
+      pendingSessions.set(conversationId, pending);
+      pending
+        .catch(() => {})
+        .finally(() => {
+          if (pendingSessions.get(conversationId) === pending) {
+            pendingSessions.delete(conversationId);
+          }
+        });
     }
+    const entry = await pending;
+    // Reserve synchronously after the shared create resolves: the first of two
+    // racing callers wins, the second observes busy and is rejected (no orphan).
+    reserve(entry);
     return entry;
   }
 
+  // Get-or-create the conversation's session and reserve it for one turn. The
+  // reservation is taken BEFORE any awaited model switch, so a concurrent send can
+  // neither run a second turn nor swap the model underneath an in-flight one.
+  async function acquireSession(conversationId, sdkModelId) {
+    const existing = sessions.get(conversationId);
+    if (existing) {
+      reserve(existing);
+      if (existing.sdkModelId !== sdkModelId) {
+        try {
+          await existing.session.setModel(sdkModelId);
+          existing.sdkModelId = sdkModelId;
+        } catch {
+          // setModel failed: drop the (now-removed) session and create a fresh one,
+          // which carries its own reservation.
+          await disposeSession(conversationId);
+          return acquireFreshSession(conversationId, sdkModelId);
+        }
+      }
+      return existing;
+    }
+    return acquireFreshSession(conversationId, sdkModelId);
+  }
+
   async function chat({ conversationId, model, message, onDelta, onUsage, signal }) {
+    if (disposed) {
+      const error = new Error("Live service disposed");
+      error.code = "disposed";
+      throw error;
+    }
     if (!conversationId) throw new Error("conversationId is required");
     if (typeof message !== "string" || message.trim().length === 0) {
       throw new Error("message is required");
@@ -180,47 +268,46 @@ export function createLiveService({ resolve, logger } = {}) {
     evictStaleSessions();
 
     const sdkModelId = resolveModelId(model);
-    const entry = await getSession(conversationId, sdkModelId);
-    if (entry.busy) {
-      const error = new Error("conversation already has a response in flight");
-      error.code = "busy";
-      throw error;
-    }
-    entry.busy = true;
-    entry.lastUsed = Date.now();
+    // acquireSession reserves the entry (busy) under the lock, or throws
+    // { code: "busy" } if a turn is already in flight for this conversation.
+    const entry = await acquireSession(conversationId, sdkModelId);
 
     const { session } = entry;
     const unsubscribers = [];
     let streamed = "";
-
-    unsubscribers.push(
-      session.on("assistant.message_delta", (event) => {
-        const delta = event?.data?.deltaContent ?? "";
-        if (delta) {
-          streamed += delta;
-          onDelta?.(delta);
-        }
-      }),
-    );
-    unsubscribers.push(
-      session.on("assistant.usage", (event) => {
-        const usage = event?.data;
-        // Only top-level (user-initiated) API calls; ignore tool/sub-call usage.
-        if (usage && !usage.parentToolCallId && (usage.initiator === undefined || usage.initiator === "user")) {
-          onUsage?.(usage);
-        }
-      }),
-    );
-
     const onAbort = () => {
       session.abort().catch(() => {});
     };
-    if (signal) {
-      if (signal.aborted) onAbort();
-      else signal.addEventListener("abort", onAbort, { once: true });
-    }
 
     try {
+      // The client may have disconnected (or the service been disposed) while we
+      // were creating/locking the session — bail before spending a whole turn.
+      if (disposed || signal?.aborted) {
+        const error = new Error("live chat aborted");
+        error.code = "aborted";
+        throw error;
+      }
+
+      unsubscribers.push(
+        session.on("assistant.message_delta", (event) => {
+          const delta = event?.data?.deltaContent ?? "";
+          if (delta) {
+            streamed += delta;
+            onDelta?.(delta);
+          }
+        }),
+      );
+      unsubscribers.push(
+        session.on("assistant.usage", (event) => {
+          const usage = event?.data;
+          // Only top-level (user-initiated) API calls; ignore tool/sub-call usage.
+          if (usage && !usage.parentToolCallId && (usage.initiator === undefined || usage.initiator === "user")) {
+            onUsage?.(usage);
+          }
+        }),
+      );
+      if (signal) signal.addEventListener("abort", onAbort, { once: true });
+
       const final = await session.sendAndWait(message, CHAT_TIMEOUT_MS);
       return { content: final?.data?.content ?? streamed, sdkModelId };
     } catch (error) {
@@ -250,6 +337,21 @@ export function createLiveService({ resolve, logger } = {}) {
   }
 
   async function dispose() {
+    disposed = true;
+    // Wait out any in-flight warm-up so we stop the client it produces instead of
+    // letting it publish a runtime onto this now-discarded service.
+    if (startPromise) {
+      try {
+        await startPromise;
+      } catch {
+        /* warm-up failed or self-aborted on the disposed flag */
+      }
+    }
+    // Wait out any in-flight session creates too, so a late createSession() can't
+    // resolve a live session onto this disposed service after we've torn down.
+    if (pendingSessions.size) {
+      await Promise.allSettled([...pendingSessions.values()]);
+    }
     for (const id of [...sessions.keys()]) {
       await disposeSession(id);
     }
