@@ -1,0 +1,51 @@
+{
+  "specId": "002",
+  "capability": "comparison",
+  "requirementIds": [
+    "FR-006"
+  ],
+  "generatedAt": "2026-06-12T19:01:26.188Z",
+  "required": [
+    "coverage",
+    "test-report",
+    "bdd-feature"
+  ],
+  "artifacts": [
+    {
+      "kind": "bdd-feature",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\docs\\sdlc\\002-tokenizer-canvas\\features\\comparison.feature",
+      "exists": true,
+      "bytes": 748,
+      "description": "BDD feature specification"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\tests\\e2e\\accessibility.spec.ts",
+      "exists": true,
+      "bytes": 2689,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\tests\\e2e\\tokenizer.spec.ts",
+      "exists": true,
+      "bytes": 31893,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "coverage",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/coverage/coverage-summary.json",
+      "exists": true,
+      "description": "v8 coverage of web/tokenizer.mjs + web/models.mjs from tests/sdlc/tokenizer-canvas"
+    },
+    {
+      "kind": "test-report",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/test-report.json",
+      "exists": true,
+      "description": "vitest JSON report — 54 SDLC unit tests passing"
+    }
+  ],
+  "complete": true,
+  "missing": [],
+  "auditNote": "Satisfied by the SDLC orchestrator. FR-006 row-data + sort-key unit tests; rendered semantic table + click-to-sort proven by Playwright (FR-006-table-sorted.png + video + trace)."
+}

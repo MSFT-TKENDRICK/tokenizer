@@ -1,0 +1,352 @@
+// Extension: tokenizer — GitHub Copilot desktop canvas (spec 002-tokenizer-canvas).
+//
+// Declares a single canvas via the Copilot SDK and serves its UI from a
+// per-instance loopback HTTP server. The pure tokenization + model-cost logic
+// lives in ./web/*.mjs and is shared verbatim with the iframe client.
+//
+// Contract reminders (see create-canvas skill):
+//   - stdout is reserved for JSON-RPC — NEVER console.log; use session.log.
+//   - bind embedded servers to loopback (127.0.0.1) only.
+//   - action handlers return raw values; throw CanvasError(code, message).
+
+import { createServer } from "node:http";
+import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { join, dirname, extname, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+import { randomBytes } from "node:crypto";
+
+import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
+
+import { summarizeTokens } from "./web/tokenizer.mjs";
+import { COPILOT_MODEL_OPTIONS } from "./web/models.mjs";
+import { resolveSdk } from "./live/resolveSdk.mjs";
+import { createLiveService } from "./live/service.mjs";
+import { handleLiveRequest } from "./live/httpHandler.mjs";
+
+const WEB_UI_DIR = join(dirname(fileURLToPath(import.meta.url)), "web-ui");
+
+// The canvas iframe renders the SAME bundled React app that ships to GitHub Pages
+// (built by `npm run build:canvas` into web-ui/), so the canvas and the published
+// site are one experience — including the Simulated/Live chat toggle. We serve the
+// built assets verbatim; canvas.html is the SPA shell mapped onto "/".
+const MIME_BY_EXT = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".map": "application/json; charset=utf-8",
+};
+
+async function serveAsset(pathname, res) {
+  const rel = pathname === "/" || pathname === "/index.html" ? "/canvas.html" : pathname;
+  const filePath = join(WEB_UI_DIR, rel);
+  // Path-traversal guard: never serve outside the built asset directory.
+  if (filePath !== WEB_UI_DIR && !filePath.startsWith(WEB_UI_DIR + sep)) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+  try {
+    const contents = await readFile(filePath);
+    const type = MIME_BY_EXT[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+    res.writeHead(200, { "Content-Type": type });
+    res.end(contents);
+  } catch {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+  }
+}
+
+// Live chat engine. ONE lazily-created, locked-down service (separate isolated
+// CopilotClient — NOT the foreground joinSession, which is tool-enabled) shared
+// across every open canvas instance. Mounted on each instance's loopback server
+// under /copilot/live/* — the same path the web app (and its Vite dev/preview
+// plugin) uses, so the bundled React Live client works unchanged in the canvas.
+// Gated by a per-process bearer token (CSRF defense over loopback). Disposed when
+// the last instance closes.
+const LIVE_BASE_PATH = "/copilot/live";
+const liveToken = randomBytes(24).toString("hex");
+let liveService = null;
+// In-flight Live SSE responses, so we can end them before closing a server.
+const liveSseResponses = new Set();
+
+function ensureLiveService() {
+  if (!liveService) {
+    liveService = createLiveService({
+      resolve: resolveSdk,
+      logger: (message) => session?.log?.(`tokenizer-live: ${message}`, { level: "warn" }),
+    });
+  }
+  return liveService;
+}
+
+// One loopback server per open canvas instance.
+const servers = new Map();
+// All open iframe SSE connections (across instances) receive agent pushes.
+const sseClients = new Set();
+
+// Session-scoped working text. FR-009 is resolved as session-scoped persistence
+// (see docs/sdlc ADR): keyed by sessionId under $COPILOT_HOME so it survives
+// iframe/extension reloads within the session without polluting the repo tree.
+let session;
+let sessionId = "default";
+let currentText = "";
+
+function stateFilePath() {
+  const home = process.env.COPILOT_HOME || join(homedir(), ".copilot");
+  const safe = String(sessionId).replace(/[^A-Za-z0-9._-]/g, "_") || "default";
+  return join(home, "extensions", "tokenizer", "artifacts", `state-${safe}.json`);
+}
+
+async function loadState() {
+  try {
+    const raw = await readFile(stateFilePath(), "utf8");
+    const data = JSON.parse(raw);
+    if (typeof data.text === "string") {
+      currentText = data.text;
+    }
+  } catch {
+    // No persisted state for this session yet.
+  }
+}
+
+async function saveState() {
+  try {
+    const file = stateFilePath();
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, JSON.stringify({ text: currentText }), "utf8");
+  } catch (error) {
+    session?.log?.(`tokenizer: failed to persist state: ${error.message}`, { level: "warn" });
+  }
+}
+
+function broadcastText(text) {
+  const payload = `event: settext\ndata: ${JSON.stringify({ text })}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(payload);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+function statusLine() {
+  const { tokens } = summarizeTokens(currentText);
+  return `${tokens} token${tokens === 1 ? "" : "s"} · ${COPILOT_MODEL_OPTIONS.length} models`;
+}
+
+async function readBody(req) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
+    if (chunks.reduce((n, c) => n + c.length, 0) > 5_000_000) {
+      throw new Error("payload too large");
+    }
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function handleSse(req, res) {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+  sseClients.add(res);
+  req.on("close", () => sseClients.delete(res));
+}
+
+async function handleRequest(req, res) {
+  let pathname = "/";
+  try {
+    pathname = new URL(req.url, "http://127.0.0.1").pathname;
+  } catch {
+    pathname = req.url || "/";
+  }
+
+  if (req.method === "GET" && pathname === "/events") {
+    handleSse(req, res);
+    return;
+  }
+
+  // Live chat (ambient-auth) endpoints: GET /live/status, POST /live/chat (SSE).
+  // Lazily spins up the isolated, locked-down Copilot client on first probe.
+  if (pathname === LIVE_BASE_PATH || pathname.startsWith(`${LIVE_BASE_PATH}/`)) {
+    const isChat = req.method === "POST" && pathname === `${LIVE_BASE_PATH}/chat`;
+    if (isChat) {
+      liveSseResponses.add(res);
+      res.on("close", () => liveSseResponses.delete(res));
+    }
+    const handled = await handleLiveRequest(req, res, ensureLiveService(), {
+      basePath: LIVE_BASE_PATH,
+      token: liveToken,
+    });
+    if (handled) return;
+    if (isChat) liveSseResponses.delete(res);
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+    return;
+  }
+
+  if (pathname === "/state") {
+    if (req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ text: currentText }));
+      return;
+    }
+    if (req.method === "POST") {
+      try {
+        const body = await readBody(req);
+        const data = body ? JSON.parse(body) : {};
+        if (typeof data.text === "string") {
+          currentText = data.text;
+          await saveState();
+        }
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: false, error: "invalid body" }));
+      }
+      return;
+    }
+  }
+
+  if (req.method === "GET") {
+    await serveAsset(pathname, res);
+    return;
+  }
+
+  res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end("Not found");
+}
+
+async function startServer() {
+  const server = createServer((req, res) => {
+    handleRequest(req, res).catch((error) => {
+      session?.log?.(`tokenizer: request error: ${error.message}`, { level: "warn" });
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+      }
+      res.end("Server error");
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  return { server, url: `http://127.0.0.1:${port}/` };
+}
+
+const canvas = createCanvas({
+  id: "tokenizer",
+  displayName: "Tokenizer",
+  description:
+    "Tokenize text and compare input cost across Copilot models, live in the side panel.",
+  inputSchema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      text: { type: "string", description: "Optional initial text to tokenize when opening." },
+    },
+  },
+  actions: [
+    {
+      name: "set_text",
+      description: "Load text into the tokenizer canvas and return its token summary.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["text"],
+        properties: {
+          text: { type: "string", description: "Text to tokenize in the canvas." },
+        },
+      },
+      handler: async (ctx) => {
+        const text = ctx?.input?.text;
+        if (typeof text !== "string") {
+          throw new CanvasError("invalid_input", "set_text requires { text: string }");
+        }
+        currentText = text;
+        await saveState();
+        broadcastText(text);
+        const summary = summarizeTokens(text);
+        session?.log?.(`tokenizer: set_text loaded ${summary.tokens} tokens`, {
+          level: "info",
+          ephemeral: true,
+        });
+        return { ok: true, summary };
+      },
+    },
+    {
+      name: "get_summary",
+      description:
+        "Return the current canvas text and its token summary (characters, bytes, words, lines, tokens).",
+      handler: async () => {
+        return {
+          text: currentText,
+          summary: summarizeTokens(currentText),
+          modelCount: COPILOT_MODEL_OPTIONS.length,
+        };
+      },
+    },
+  ],
+  open: async (ctx) => {
+    if (ctx?.input && typeof ctx.input.text === "string" && ctx.input.text.length > 0) {
+      currentText = ctx.input.text;
+      await saveState();
+      broadcastText(currentText);
+    }
+
+    let entry = servers.get(ctx.instanceId);
+    if (!entry) {
+      entry = await startServer();
+      servers.set(ctx.instanceId, entry);
+    }
+    return {
+      title: "Tokenizer",
+      status: statusLine(),
+      url: entry.url,
+    };
+  },
+  onClose: async (ctx) => {
+    const entry = servers.get(ctx.instanceId);
+    if (entry) {
+      servers.delete(ctx.instanceId);
+      // End any Live SSE streams bound to this server so close() can't hang on a
+      // long-poll; the iframe teardown also closes the socket, which aborts the
+      // underlying session via the handler's req "close" listener.
+      for (const liveRes of liveSseResponses) {
+        if (liveRes.socket && liveRes.socket.server === entry.server) {
+          liveSseResponses.delete(liveRes);
+          try {
+            liveRes.end();
+          } catch {
+            /* best effort */
+          }
+        }
+      }
+      await new Promise((resolve) => entry.server.close(() => resolve()));
+    }
+    // Free the spawned Copilot runtime once the last canvas instance is gone.
+    if (servers.size === 0 && liveService) {
+      const svc = liveService;
+      liveService = null;
+      await svc.dispose().catch(() => {});
+    }
+  },
+});
+
+session = await joinSession({ canvases: [canvas] });
+sessionId = session?.sessionId ?? "default";
+await loadState();
+session?.log?.("Tokenizer canvas ready", { level: "info", ephemeral: true });

@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { configDefaults, defineConfig } from 'vitest/config';
 import { VitePWA } from 'vite-plugin-pwa';
+import { copilotLivePlugin } from './scripts/vite-plugin-copilot-live.mjs';
 
 const isGitHubPages =
   process.env.GITHUB_PAGES === 'true' || process.env.npm_lifecycle_event === 'build:pages';
@@ -10,6 +11,7 @@ export default defineConfig({
   base,
   plugins: [
     react(),
+    copilotLivePlugin({ base }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['manifest.webmanifest', 'icons/tokenizer-icon.svg'],
@@ -17,6 +19,7 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         navigateFallback: `${base}index.html`,
+        navigateFallbackDenylist: [new RegExp(`^${base}copilot/live`)],
         globPatterns: ['**/*.{js,css,html,svg,webmanifest}'],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024
       },
@@ -43,6 +46,6 @@ export default defineConfig({
     }
   },
   test: {
-    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'sdlc/**']
+    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'sdlc/**', '**/*.visual.spec.ts']
   }
 });
