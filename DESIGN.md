@@ -197,6 +197,28 @@ components:
     typography: "{typography.metadata}"
     rounded: "{rounded.none}"
     padding: "{spacing.compact}"
+  modeToggle:
+    backgroundColor: "{colors.background}"
+    textColor: "{colors.primary}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.none}"
+    padding: "{spacing.compact}"
+  modeTogglePressed:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.background}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.none}"
+  liveStatus:
+    backgroundColor: "{colors.background}"
+    textColor: "{colors.muted}"
+    typography: "{typography.metadata}"
+    rounded: "{rounded.none}"
+  liveStream:
+    backgroundColor: "{colors.shell}"
+    textColor: "{colors.primary}"
+    typography: "{typography.body}"
+    rounded: "{rounded.none}"
+    padding: "{spacing.compact}"
 ---
 
 ## Overview
@@ -225,14 +247,14 @@ Use sharp tags and editorial labels with no rounding. Inline code can use a smal
 
 ## Components
 
-Page and article containers carry the black-on-white reading experience. Metadata rows use small monospace text and muted color. Links and focus indicators use the blue accent sparingly and visibly. Tags are uppercase monospace labels with sharp corners. Shell frames, dividers, code blocks, and media blocks provide crisp editorial structure. Model selectors should feel like compact input chrome inside the text surface rather than separate configuration panels; one control should expose the full Copilot model list, Auto selection, and usage-based AI credit rate. Context controls should live inside the relevant text surface as compact input chrome, using sharp multi-select icon controls, black applied states, and optional dark diff previews; context additions reuse the hover highlight token rather than introducing a second success green. Dark page, article, and metadata components define the inverted reading mode without changing the article-led hierarchy.
+Page and article containers carry the black-on-white reading experience. Metadata rows use small monospace text and muted color. Links and focus indicators use the blue accent sparingly and visibly. Tags are uppercase monospace labels with sharp corners. Shell frames, dividers, code blocks, and media blocks provide crisp editorial structure. Model selectors should feel like compact input chrome inside the text surface rather than separate configuration panels; one control should expose the full Copilot model list, Auto selection, and usage-based AI credit rate. Context controls should live inside the relevant text surface as compact input chrome, using sharp multi-select icon controls, black applied states, and optional dark diff previews; context additions reuse the hover highlight token rather than introducing a second success green. The response-mode control (Simulated vs Live) is a compact, sharp segmented toggle that reuses the same black pressed state as other selected affordances, sitting subordinate beside the view tabs rather than dominating them. When Live is engaged, a monospace status line reports runtime readiness in muted text with a small square indicator — accent blue for ready, muted gray while the runtime warms, and solid black for an error — never introducing a competing status palette. Streaming Live replies render in the existing assistant shell, distinguished only by a thin hover-highlight edge and a blinking block caret built from `currentColor`; finalized SDK token counts appear as a separate muted monospace readout and are never summed into the local estimate. Dark page, article, and metadata components define the inverted reading mode without changing the article-led hierarchy.
 
 ## Accessibility
 
-Meet WCAG AA contrast for text and WCAG 1.4.11 non-text contrast for icon controls in both light and dark themes. SVG icons inside interactive controls must use `currentColor` so selected, hover, focus, and dark-mode states inherit the same accessible foreground color as surrounding text. Every form control must have a programmatic label even when the visible UI is intentionally compact. Run `npm run test:a11y` for UI changes, alongside visual validation, and fix any automated axe violations before shipping.
+Meet WCAG AA contrast for text and WCAG 1.4.11 non-text contrast for icon controls in both light and dark themes. SVG icons inside interactive controls must use `currentColor` so selected, hover, focus, and dark-mode states inherit the same accessible foreground color as surrounding text. Every form control must have a programmatic label even when the visible UI is intentionally compact. The response-mode toggle exposes pressed state through `aria-pressed`, the Live runtime status line is a polite live region so readiness and error changes are announced without stealing focus, and the in-flight streaming reply is marked polite so assistive tech is not flooded by per-token updates. Status is never communicated by the indicator color alone — each state carries an explicit text label. Run `npm run test:a11y` for UI changes, alongside visual validation, and fix any automated axe violations before shipping.
 
 ## Do's and Don'ts
 
-Do prioritize readable long-form rhythm, clear hierarchy, crisp borders, sparse interaction color, and verified accessibility contrast. Do keep typography medium-weight and editorial. Do keep model and context controls visually subordinate to the text input they modify. Do support dark mode with true contrast rather than tinted approximations.
+Do prioritize readable long-form rhythm, clear hierarchy, crisp borders, sparse interaction color, and verified accessibility contrast. Do keep typography medium-weight and editorial. Do keep model, context, and response-mode controls visually subordinate to the text input they modify. Do support dark mode with true contrast rather than tinted approximations.
 
-Don't add decorative gradients, heavy shadows, soft pill tags, crowded sidebars, or multiple competing accent colors. Don't show context toggles as tabs; use pressed multi-select controls. Don't use monospace for body prose. Don't reduce paragraph line-height below the specified reading rhythm.
+Don't add decorative gradients, heavy shadows, soft pill tags, crowded sidebars, or multiple competing accent colors. Don't show context toggles as tabs; use pressed multi-select controls. Don't render the Simulated/Live switch as a row of page tabs or give Live runtime status its own bespoke color system — reuse the accent, muted, and primary tokens already defined. Don't use monospace for body prose. Don't reduce paragraph line-height below the specified reading rhythm.
