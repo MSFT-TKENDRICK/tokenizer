@@ -14,9 +14,14 @@ export const SSE_EVENTS = {
 } as const;
 
 export const ENGINE_STATUS = {
+  // Not resolvable (no SDK/CLI on this host) or not yet warmed.
   unavailable: "unavailable",
   warming: "warming",
   ready: "ready",
+  // Resolvable but the runtime failed to initialize (e.g. handshake timeout or a
+  // broken/mismatched CLI). Distinct from "unavailable" so the UI can surface a
+  // retryable "Live unavailable" while keeping Simulated working.
+  error: "error",
 } as const;
 
 export const SDK_MODEL_ALIASES: Record<string, string> = {

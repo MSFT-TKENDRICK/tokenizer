@@ -310,7 +310,8 @@ export default function App() {
   const liveReady = isLive && live.available && live.authenticated && live.engineStatus === ENGINE_STATUS.ready;
   const liveSignedOut = isLive && live.available && !live.authenticated && live.engineStatus === ENGINE_STATUS.ready;
   const liveWarming = isLive && live.available && live.engineStatus === ENGINE_STATUS.warming;
-  const liveUnavailable = isLive && live.probed && !live.available;
+  const liveUnavailable =
+    isLive && live.probed && (!live.available || live.engineStatus === ENGINE_STATUS.error);
 
   // In Live mode, swap the real Copilot answer in for the canned simulation. A
   // finalized turn contributes its real (possibly empty) text; a pending,
@@ -660,7 +661,9 @@ export default function App() {
   }
 
   const liveStatusMessage = liveUnavailable
-    ? "Live unavailable — start the Copilot CLI, then reload."
+    ? live.available
+      ? "Live unavailable — the Copilot runtime failed to start. Try reloading."
+      : "Live unavailable — start the Copilot CLI, then reload."
     : liveSignedOut
       ? "Live · sign in to GitHub Copilot to chat."
       : liveWarming

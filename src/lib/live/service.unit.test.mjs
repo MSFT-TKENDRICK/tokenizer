@@ -125,6 +125,59 @@ describe("createLiveService", () => {
     await service.dispose();
   });
 
+  it("times out a wedged warm-up, reports engineStatus 'error', tears the client down, and cools down", async () => {
+    let constructed = 0;
+    let started = 0;
+    let stopped = 0;
+    const sdk = {
+      RuntimeConnection: { forStdio: ({ path }) => ({ kind: "stdio", path }) },
+      CopilotClient: class {
+        constructor() {
+          constructed += 1;
+        }
+        async start() {
+          started += 1;
+          await new Promise(() => {}); // never resolves -> warm-up must time out
+        }
+        async stop() {
+          stopped += 1;
+        }
+        async getAuthStatus() {
+          return { isAuthenticated: true };
+        }
+        async listModels() {
+          return [{ id: "auto", name: "Auto" }];
+        }
+        async createSession() {
+          return makeFakeSession();
+        }
+      },
+    };
+    const service = createLiveService({
+      resolve: () => ({ cliPath: "C:/fake/copilot.exe", async load() { return sdk; } }),
+      warmupTimeoutMs: 20,
+      warmupRetryCooldownMs: 10_000,
+    });
+
+    const warming = await service.status();
+    expect(warming.engineStatus).toBe("warming");
+
+    // Let the bounded handshake time out and flip the engine to a terminal "error".
+    await new Promise((r) => setTimeout(r, 80));
+    const failed = await service.status({ warm: false });
+    expect(failed.available).toBe(true); // resolvable, just failed to initialize
+    expect(failed.engineStatus).toBe("error");
+    expect(started).toBe(1);
+    expect(stopped).toBe(1); // the wedged client is torn down, not leaked
+
+    // Within the cooldown, a warming poll must NOT spawn a second doomed runtime.
+    await service.status({ warm: true });
+    await tick();
+    expect(constructed).toBe(1);
+
+    await service.dispose();
+  });
+
   it("creates locked-down sessions (no tools, streaming, deny-all)", async () => {
     const { service, sdk } = makeService();
     await service.chat({ conversationId: "c1", model: "auto", message: "hi" });

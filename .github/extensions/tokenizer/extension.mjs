@@ -11,7 +11,7 @@
 
 import { createServer } from "node:http";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { join, dirname, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
@@ -24,28 +24,55 @@ import { resolveSdk } from "./live/resolveSdk.mjs";
 import { createLiveService } from "./live/service.mjs";
 import { handleLiveRequest } from "./live/httpHandler.mjs";
 
-const WEB_DIR = join(dirname(fileURLToPath(import.meta.url)), "web");
+const WEB_UI_DIR = join(dirname(fileURLToPath(import.meta.url)), "web-ui");
 
-const STATIC_ROUTES = {
-  "/": { file: "index.html", type: "text/html; charset=utf-8" },
-  "/index.html": { file: "index.html", type: "text/html; charset=utf-8" },
-  "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
-  "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" },
-  "/tokenizer.mjs": { file: "tokenizer.mjs", type: "text/javascript; charset=utf-8" },
-  "/models.mjs": { file: "models.mjs", type: "text/javascript; charset=utf-8" },
-  // Live chat (ambient-auth) client + shared wire protocol, served verbatim to
-  // the iframe. Absent the engine these are inert: app.js probes /live/status
-  // first and only reveals the chat panel when it succeeds.
-  "/liveClient.mjs": { file: "liveClient.mjs", type: "text/javascript; charset=utf-8" },
-  "/protocol.mjs": { file: "protocol.mjs", type: "text/javascript; charset=utf-8" },
+// The canvas iframe renders the SAME bundled React app that ships to GitHub Pages
+// (built by `npm run build:canvas` into web-ui/), so the canvas and the published
+// site are one experience — including the Simulated/Live chat toggle. We serve the
+// built assets verbatim; canvas.html is the SPA shell mapped onto "/".
+const MIME_BY_EXT = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".map": "application/json; charset=utf-8",
 };
+
+async function serveAsset(pathname, res) {
+  const rel = pathname === "/" || pathname === "/index.html" ? "/canvas.html" : pathname;
+  const filePath = join(WEB_UI_DIR, rel);
+  // Path-traversal guard: never serve outside the built asset directory.
+  if (filePath !== WEB_UI_DIR && !filePath.startsWith(WEB_UI_DIR + sep)) {
+    res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Forbidden");
+    return;
+  }
+  try {
+    const contents = await readFile(filePath);
+    const type = MIME_BY_EXT[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+    res.writeHead(200, { "Content-Type": type });
+    res.end(contents);
+  } catch {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+  }
+}
 
 // Live chat engine. ONE lazily-created, locked-down service (separate isolated
 // CopilotClient — NOT the foreground joinSession, which is tool-enabled) shared
 // across every open canvas instance. Mounted on each instance's loopback server
-// under /live/*; gated by a per-process bearer token (CSRF defense over
-// loopback). Disposed when the last instance closes.
-const LIVE_BASE_PATH = "/live";
+// under /copilot/live/* — the same path the web app (and its Vite dev/preview
+// plugin) uses, so the bundled React Live client works unchanged in the canvas.
+// Gated by a per-process bearer token (CSRF defense over loopback). Disposed when
+// the last instance closes.
+const LIVE_BASE_PATH = "/copilot/live";
 const liveToken = randomBytes(24).toString("hex");
 let liveService = null;
 // In-flight Live SSE responses, so we can end them before closing a server.
@@ -195,16 +222,8 @@ async function handleRequest(req, res) {
     }
   }
 
-  const route = req.method === "GET" ? STATIC_ROUTES[pathname] : undefined;
-  if (route) {
-    try {
-      const contents = await readFile(join(WEB_DIR, route.file));
-      res.writeHead(200, { "Content-Type": route.type });
-      res.end(contents);
-    } catch {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end("Not found");
-    }
+  if (req.method === "GET") {
+    await serveAsset(pathname, res);
     return;
   }
 

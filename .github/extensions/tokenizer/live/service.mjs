@@ -13,6 +13,16 @@ import { ENGINE_STATUS, toSdkModelId } from "../web/protocol.mjs";
 const CHAT_TIMEOUT_MS = 120_000;
 const SESSION_TTL_MS = 30 * 60_000;
 const MAX_SESSIONS = 8;
+// Bound the runtime handshake. A broken/mismatched CLI (e.g. a wrong-arch native
+// addon that never loads in the spawned process) can leave start() pending
+// forever; without this the engine sits in "warming" and the UI hangs on
+// "Starting Copilot runtime…" indefinitely instead of degrading to unavailable.
+const DEFAULT_WARMUP_TIMEOUT_MS = 60_000;
+// After a warm-up failure, don't immediately re-spawn another doomed runtime on
+// the next status poll / send; wait out a short cooldown first.
+const DEFAULT_WARMUP_RETRY_COOLDOWN_MS = 30_000;
+// A wedged runtime can hang stop() too — cleanup must never wedge the service.
+const WARMUP_STOP_TIMEOUT_MS = 5_000;
 
 // Deny every tool-permission request. With availableTools:[] this should never
 // fire, but omitting it would let any request hang forever (SDK contract).
@@ -20,19 +30,48 @@ function denyAll() {
   return { kind: "reject", feedback: "Live tokenizer chat does not run tools." };
 }
 
-export function createLiveService({ resolve, logger } = {}) {
+// Race a promise against a timeout. Settles with the original promise if it wins;
+// otherwise rejects with a { code: "timeout" } error. ms <= 0 / non-finite skips
+// the bound entirely (used to make the timeout injectable + testable).
+function withTimeout(promise, ms, message) {
+  if (!Number.isFinite(ms) || ms <= 0) return Promise.resolve(promise);
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(message ?? "operation timed out");
+      error.code = "timeout";
+      reject(error);
+    }, ms);
+    // Never keep the event loop alive solely for this guard timer.
+    if (typeof timer?.unref === "function") timer.unref();
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timer));
+}
+
+export function createLiveService({ resolve, logger, warmupTimeoutMs, warmupRetryCooldownMs } = {}) {
   const log = typeof logger === "function" ? logger : () => {};
   const resolver = typeof resolve === "function" ? resolve : () => null;
+  const warmupTimeout = Number.isFinite(warmupTimeoutMs) ? warmupTimeoutMs : DEFAULT_WARMUP_TIMEOUT_MS;
+  const warmupCooldown = Number.isFinite(warmupRetryCooldownMs)
+    ? warmupRetryCooldownMs
+    : DEFAULT_WARMUP_RETRY_COOLDOWN_MS;
 
   let engineStatus = ENGINE_STATUS.unavailable;
   let startPromise = null;
   let runtime = null; // { client, auth, models:[{id,name}], baseDirectory }
   let disposed = false;
+  let warmFailedAt = 0; // timestamp of the last warm-up failure (0 = none)
   const sessions = new Map(); // conversationId -> { session, sdkModelId, lastUsed, busy }
   const pendingSessions = new Map(); // conversationId -> Promise<entry> (in-flight create)
 
   function available() {
     return resolver() != null;
+  }
+
+  // True while we're in the post-failure cooldown: a recent warm-up failed and
+  // we shouldn't re-spawn a (likely still-broken) runtime yet.
+  function warmCoolingDown() {
+    return warmFailedAt !== 0 && Date.now() - warmFailedAt < warmupCooldown;
   }
 
   async function ensureRuntime() {
@@ -42,6 +81,14 @@ export function createLiveService({ resolve, logger } = {}) {
     // setModel failure re-routes an in-flight chat into acquireFreshSession).
     if (disposed) throw new Error("Live service disposed");
     if (runtime) return runtime;
+    // A recent warm-up failed (e.g. a broken/mismatched CLI whose runtime never
+    // initializes): fail fast during the cooldown instead of spawning another
+    // doomed subprocess on every status poll / send.
+    if (warmCoolingDown()) {
+      const error = new Error("Copilot runtime unavailable");
+      error.code = "unavailable";
+      throw error;
+    }
     if (!startPromise) {
       const resolved = resolver();
       if (!resolved) {
@@ -61,28 +108,40 @@ export function createLiveService({ resolve, logger } = {}) {
             connection: RuntimeConnection.forStdio({ path: resolved.cliPath }),
             logLevel: "error",
           });
-          await client.start();
-          const [auth, models] = await Promise.all([
-            client.getAuthStatus().catch(() => ({ isAuthenticated: false })),
-            client.listModels().catch(() => []),
-          ]);
+          // Bound the whole handshake (start + initial auth/model probe). A runtime
+          // that spawns but never completes its handshake would otherwise hang here
+          // forever, pinning the engine in "warming".
+          const warmed = await withTimeout(
+            (async () => {
+              await client.start();
+              const [auth, models] = await Promise.all([
+                client.getAuthStatus().catch(() => ({ isAuthenticated: false })),
+                client.listModels().catch(() => []),
+              ]);
+              return { auth, models };
+            })(),
+            warmupTimeout,
+            "Copilot runtime did not become ready in time",
+          );
           // dispose() may have run while we were warming; don't publish a runtime
           // onto a discarded service — that would orphan the spawned subprocess.
           if (disposed) throw new Error("Live service disposed during warm-up");
           runtime = {
             client,
-            auth,
+            auth: warmed.auth,
             baseDirectory,
-            models: models.map((m) => ({ id: m.id, name: m.name })),
+            models: warmed.models.map((m) => ({ id: m.id, name: m.name })),
           };
           engineStatus = ENGINE_STATUS.ready;
+          warmFailedAt = 0; // a healthy warm clears any prior failure cooldown
           return runtime;
         } catch (error) {
           // Tear down the partially-started client + temp dir on any failure so a
-          // failed/aborted warm-up never leaks a process or directory.
+          // failed/aborted/timed-out warm-up never leaks a process or directory.
+          // Bound the stop() too: a wedged runtime can hang it.
           if (client) {
             try {
-              await client.stop();
+              await withTimeout(client.stop(), WARMUP_STOP_TIMEOUT_MS, "client.stop timed out");
             } catch {
               /* best effort */
             }
@@ -95,7 +154,12 @@ export function createLiveService({ resolve, logger } = {}) {
           throw error;
         }
       })().catch((error) => {
-        engineStatus = ENGINE_STATUS.unavailable;
+        // Distinguish "resolved but failed to initialize" (engineStatus "error", a
+        // retryable runtime failure the UI surfaces as "Live unavailable" while
+        // keeping Simulated working) from "not resolvable" (engineStatus
+        // "unavailable", set above when the resolver returns null).
+        engineStatus = ENGINE_STATUS.error;
+        warmFailedAt = Date.now();
         startPromise = null;
         log(`live warm-up failed: ${error.message}`);
         throw error;
@@ -106,9 +170,9 @@ export function createLiveService({ resolve, logger } = {}) {
 
   // Begin warming the runtime in the background without blocking the caller.
   function warm() {
-    if (!runtime && available()) {
+    if (!runtime && available() && !warmCoolingDown()) {
       ensureRuntime().catch(() => {
-        /* surfaced via status().engineStatus === "unavailable" */
+        /* surfaced via status().engineStatus === "error" */
       });
     }
   }

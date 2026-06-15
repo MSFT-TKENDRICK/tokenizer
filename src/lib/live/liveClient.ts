@@ -1,6 +1,7 @@
-// React-app Live client. TS mirror of
-// .github/extensions/tokenizer/web/liveClient.mjs (same protocol, same SSE
-// parsing). Holds the bearer token in memory and replays it on POST /chat.
+// React-app Live client. Talks to the Live engine over the shared wire protocol
+// (src/lib/live/protocol.ts), holding the bearer token in memory and replaying it
+// on POST /chat. This is the single Live client — the canvas renders this same
+// bundled React app rather than a separate iframe client.
 
 import { LIVE_ENDPOINTS, SSE_EVENTS, joinLivePath } from "./protocol";
 import type { LiveStatus, LiveUsage } from "./protocol";

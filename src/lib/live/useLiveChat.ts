@@ -33,6 +33,18 @@ export interface UseLiveChat {
 }
 
 function liveBaseUrl(): string {
+  // The canvas iframe pins an explicit, origin-absolute base (its loopback server
+  // mounts the engine at /copilot/live) via a global, so the relative-base canvas
+  // build never has to depend on import.meta.env.BASE_URL. The web app leaves the
+  // global unset and derives the path from the Vite base (/, or /tokenizer/ on
+  // GitHub Pages), where a static host simply 404s and Live stays hidden.
+  const override =
+    typeof window !== "undefined"
+      ? (window as unknown as { __COPILOT_LIVE_BASE__?: string }).__COPILOT_LIVE_BASE__
+      : undefined;
+  if (typeof override === "string" && override.length > 0) {
+    return override.replace(/\/+$/, "");
+  }
   const base = import.meta.env.BASE_URL || "/";
   return `${base.replace(/\/+$/, "")}/copilot/live`;
 }
