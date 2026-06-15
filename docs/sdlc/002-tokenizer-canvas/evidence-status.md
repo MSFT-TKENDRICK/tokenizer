@@ -60,7 +60,10 @@ registration, action contract, session persistence, stdout discipline). Those to
 (`extensions_reload`, `open_canvas`, `invoke_canvas_action`) are held by the
 top-level orchestrator, who ran them and supplied the results cited above as ground
 truth. The SDLC orchestrator independently reproduced the **visual** surface by
-serving `.github/extensions/tokenizer/web/` on a fixed loopback port
-(`static-server.mjs`) and driving it with Playwright + axe, yielding the
-screenshots, videos and traces for FR-003/004/006/007 and NFR-001. No requirement
-remains pending.
+serving the built canvas app at `.github/extensions/tokenizer/web-ui/` on a fixed
+loopback port (`static-server.mjs`) and driving it with Playwright + axe. The
+canvas now renders the same published React web app (`src/App.tsx`) as GitHub
+Pages — including the Simulated | Live chat toggle — rather than a separate
+bespoke UI; the regenerated `canvas-published-app`/`canvas-mode-toggle`
+screenshots and the NFR-001 axe pass cover that surface. No requirement remains
+pending.
