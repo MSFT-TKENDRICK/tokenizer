@@ -12,6 +12,11 @@ export interface PromptSection {
   content: string;
 }
 
+// Optional per-turn override used by Live mode to substitute the real Copilot
+// assistant text in place of the canned simulation. Returning undefined/empty
+// falls back to conversationAssistantResponses.
+export type ResponseResolver = (turnIndex: number) => string | undefined;
+
 export const baseSystem = `<system>
 You are an expert AI programming assistant, working with a user in the VS Code editor.
 Your name is GitHub Copilot.
@@ -113,13 +118,17 @@ Fetch a pull request by owner, repo, and pull request number.
 - Return concise findings with links and actionable next steps.
 </instruction>`;
 
-export function assistantResponseForTurn(turnIndex: number) {
+export function assistantResponseForTurn(turnIndex: number, override?: ResponseResolver) {
+  const live = override?.(turnIndex);
+  if (live != null && live.trim().length > 0) {
+    return live;
+  }
   return conversationAssistantResponses[turnIndex] ?? "I would answer using the submitted user request and the current prompt context.";
 }
 
-export function assistantResponseTraceForTurn(turnIndex: number) {
+export function assistantResponseTraceForTurn(turnIndex: number, override?: ResponseResolver) {
   return formatPromptXml(`<assistantResponse>
-${assistantResponseForTurn(turnIndex)}
+${assistantResponseForTurn(turnIndex, override)}
 </assistantResponse>`);
 }
 
@@ -249,7 +258,10 @@ export function composePrompt(selectedLayerIds: readonly string[], userRequest =
     .join("\n\n");
 }
 
-export function composeConversationRequest(messages: readonly string[], options: { includeAssistantResponses?: boolean } = {}) {
+export function composeConversationRequest(
+  messages: readonly string[],
+  options: { includeAssistantResponses?: boolean; responseResolver?: ResponseResolver } = {},
+) {
   if (messages.length === 0) {
     return "";
   }
@@ -257,7 +269,7 @@ export function composeConversationRequest(messages: readonly string[], options:
   return messages.map((message, index) => [
     userPromptOneRaw,
     replaceTaggedContent(userPromptTwoRaw, "userRequest", message),
-    ...(options.includeAssistantResponses ? [assistantResponseTraceForTurn(index)] : []),
+    ...(options.includeAssistantResponses ? [assistantResponseTraceForTurn(index, options.responseResolver)] : []),
   ].join("\n\n")).join("\n\n");
 }
 

@@ -14,11 +14,15 @@ import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { randomBytes } from "node:crypto";
 
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 import { summarizeTokens } from "./web/tokenizer.mjs";
 import { COPILOT_MODEL_OPTIONS } from "./web/models.mjs";
+import { resolveSdk } from "./live/resolveSdk.mjs";
+import { createLiveService } from "./live/service.mjs";
+import { handleLiveRequest } from "./live/httpHandler.mjs";
 
 const WEB_DIR = join(dirname(fileURLToPath(import.meta.url)), "web");
 
@@ -29,7 +33,33 @@ const STATIC_ROUTES = {
   "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" },
   "/tokenizer.mjs": { file: "tokenizer.mjs", type: "text/javascript; charset=utf-8" },
   "/models.mjs": { file: "models.mjs", type: "text/javascript; charset=utf-8" },
+  // Live chat (ambient-auth) client + shared wire protocol, served verbatim to
+  // the iframe. Absent the engine these are inert: app.js probes /live/status
+  // first and only reveals the chat panel when it succeeds.
+  "/liveClient.mjs": { file: "liveClient.mjs", type: "text/javascript; charset=utf-8" },
+  "/protocol.mjs": { file: "protocol.mjs", type: "text/javascript; charset=utf-8" },
 };
+
+// Live chat engine. ONE lazily-created, locked-down service (separate isolated
+// CopilotClient — NOT the foreground joinSession, which is tool-enabled) shared
+// across every open canvas instance. Mounted on each instance's loopback server
+// under /live/*; gated by a per-process bearer token (CSRF defense over
+// loopback). Disposed when the last instance closes.
+const LIVE_BASE_PATH = "/live";
+const liveToken = randomBytes(24).toString("hex");
+let liveService = null;
+// In-flight Live SSE responses, so we can end them before closing a server.
+const liveSseResponses = new Set();
+
+function ensureLiveService() {
+  if (!liveService) {
+    liveService = createLiveService({
+      resolve: resolveSdk,
+      logger: (message) => session?.log?.(`tokenizer-live: ${message}`, { level: "warn" }),
+    });
+  }
+  return liveService;
+}
 
 // One loopback server per open canvas instance.
 const servers = new Map();
@@ -119,6 +149,25 @@ async function handleRequest(req, res) {
 
   if (req.method === "GET" && pathname === "/events") {
     handleSse(req, res);
+    return;
+  }
+
+  // Live chat (ambient-auth) endpoints: GET /live/status, POST /live/chat (SSE).
+  // Lazily spins up the isolated, locked-down Copilot client on first probe.
+  if (pathname === LIVE_BASE_PATH || pathname.startsWith(`${LIVE_BASE_PATH}/`)) {
+    const isChat = req.method === "POST" && pathname === `${LIVE_BASE_PATH}/chat`;
+    if (isChat) {
+      liveSseResponses.add(res);
+      res.on("close", () => liveSseResponses.delete(res));
+    }
+    const handled = await handleLiveRequest(req, res, ensureLiveService(), {
+      basePath: LIVE_BASE_PATH,
+      token: liveToken,
+    });
+    if (handled) return;
+    if (isChat) liveSseResponses.delete(res);
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
     return;
   }
 
@@ -254,7 +303,26 @@ const canvas = createCanvas({
     const entry = servers.get(ctx.instanceId);
     if (entry) {
       servers.delete(ctx.instanceId);
+      // End any Live SSE streams bound to this server so close() can't hang on a
+      // long-poll; the iframe teardown also closes the socket, which aborts the
+      // underlying session via the handler's req "close" listener.
+      for (const liveRes of liveSseResponses) {
+        if (liveRes.socket && liveRes.socket.server === entry.server) {
+          liveSseResponses.delete(liveRes);
+          try {
+            liveRes.end();
+          } catch {
+            /* best effort */
+          }
+        }
+      }
       await new Promise((resolve) => entry.server.close(() => resolve()));
+    }
+    // Free the spawned Copilot runtime once the last canvas instance is gone.
+    if (servers.size === 0 && liveService) {
+      const svc = liveService;
+      liveService = null;
+      await svc.dispose().catch(() => {});
     }
   },
 });

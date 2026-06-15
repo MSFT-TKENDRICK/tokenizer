@@ -377,10 +377,186 @@ for (const button of document.querySelectorAll(".sort-btn")) {
   });
 }
 
+// ---- Live chat (ambient-auth, optional) ---------------------------------
+// Guarded: if the engine isn't mounted (e.g. the SDLC static server, or a host
+// without a Copilot runtime), /live/status fails and the panel stays hidden so
+// the tokenizer keeps working untouched.
+
+const liveEls = {
+  section: document.getElementById("live-section"),
+  statusText: document.getElementById("live-status-text"),
+  statusLine: document.getElementById("live-status"),
+  model: document.getElementById("live-model"),
+  transcript: document.getElementById("live-transcript"),
+  empty: document.getElementById("live-empty"),
+  form: document.getElementById("live-form"),
+  input: document.getElementById("live-input"),
+  send: document.getElementById("live-send"),
+};
+
+function liveConversationId() {
+  if (globalThis.crypto?.randomUUID) return `canvas-${globalThis.crypto.randomUUID()}`;
+  return `canvas-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function setLiveStatus(state, text) {
+  if (!liveEls.statusLine) return;
+  liveEls.statusLine.className = `live-status live-status-${state}`;
+  if (liveEls.statusText) liveEls.statusText.textContent = text;
+}
+
+function appendLiveMessage(role, label, text) {
+  if (liveEls.empty && liveEls.empty.parentElement) liveEls.empty.remove();
+  const article = document.createElement("article");
+  article.className = `live-message live-message-${role}`;
+  const tag = document.createElement("span");
+  tag.className = "live-message-label";
+  tag.textContent = label;
+  const body = document.createElement("p");
+  body.textContent = text;
+  article.append(tag, body);
+  liveEls.transcript.append(article);
+  liveEls.transcript.scrollTop = liveEls.transcript.scrollHeight;
+  return { article, tag, body };
+}
+
+function setupLiveChat() {
+  if (!liveEls.section) return;
+  const baseUrl = new URL("live", document.baseURI).href;
+  let client = null;
+  let streaming = false;
+  const conversationId = liveConversationId();
+
+  function populateModels(models) {
+    if (!Array.isArray(models) || models.length === 0) return;
+    const previous = liveEls.model.value;
+    liveEls.model.replaceChildren();
+    for (const model of models) {
+      const option = document.createElement("option");
+      option.value = model.id;
+      option.textContent = model.name || model.id;
+      liveEls.model.append(option);
+    }
+    if ([...liveEls.model.options].some((option) => option.value === previous)) {
+      liveEls.model.value = previous;
+    }
+  }
+
+  function applyStatus(status) {
+    if (!status || !status.available) {
+      liveEls.section.hidden = true;
+      return false;
+    }
+    liveEls.section.hidden = false;
+    populateModels(status.models);
+    if (status.engineStatus === "ready") {
+      setLiveStatus(
+        "ready",
+        status.login ? `Ready · signed in as ${status.login}` : "Ready",
+      );
+      liveEls.send.disabled = streaming;
+      return true;
+    }
+    if (status.engineStatus === "warming") {
+      setLiveStatus("warming", "Starting Copilot runtime…");
+      liveEls.send.disabled = true;
+      return false;
+    }
+    setLiveStatus("error", "Live unavailable.");
+    liveEls.send.disabled = true;
+    return false;
+  }
+
+  async function pollUntilReady() {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      try {
+        const status = await client.getStatus();
+        if (applyStatus(status)) return;
+        if (!status?.available) return;
+      } catch {
+        setLiveStatus("error", "Live unavailable.");
+        return;
+      }
+    }
+  }
+
+  async function send(message) {
+    streaming = true;
+    liveEls.send.disabled = true;
+    liveEls.input.disabled = true;
+    appendLiveMessage("user", "You", message);
+    const assistant = appendLiveMessage("assistant", "Copilot", "");
+    const cursor = document.createElement("span");
+    cursor.className = "live-stream-cursor";
+    cursor.setAttribute("aria-hidden", "true");
+    assistant.body.after(cursor);
+    let streamed = "";
+
+    try {
+      await client.streamChat(
+        { conversationId, model: liveEls.model.value || "auto", message },
+        {
+          onDelta: (delta) => {
+            streamed += delta;
+            assistant.body.textContent = streamed;
+            liveEls.transcript.scrollTop = liveEls.transcript.scrollHeight;
+          },
+          onMessage: (text) => {
+            if (text) assistant.body.textContent = text;
+          },
+          onError: (msg) => {
+            assistant.article.classList.add("live-message-error");
+            assistant.tag.textContent = "Copilot · error";
+            if (!assistant.body.textContent) assistant.body.textContent = msg;
+          },
+        },
+      );
+    } catch (error) {
+      assistant.article.classList.add("live-message-error");
+      assistant.tag.textContent = "Copilot · error";
+      if (!assistant.body.textContent) {
+        assistant.body.textContent =
+          error instanceof Error ? error.message : "Live chat failed.";
+      }
+    } finally {
+      cursor.remove();
+      streaming = false;
+      liveEls.input.disabled = false;
+      liveEls.send.disabled = false;
+      liveEls.input.focus();
+    }
+  }
+
+  liveEls.form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const message = liveEls.input.value.trim();
+    if (!message || streaming) return;
+    liveEls.input.value = "";
+    void send(message);
+  });
+
+  (async function initLive() {
+    try {
+      const module = await import("./liveClient.mjs");
+      client = module.createLiveClient(baseUrl);
+      const status = await client.getStatus();
+      const ready = applyStatus(status);
+      if (!ready && status?.available && status.engineStatus === "warming") {
+        void pollUntilReady();
+      }
+    } catch {
+      // Engine absent — leave the panel hidden; tokenizer is unaffected.
+      liveEls.section.hidden = true;
+    }
+  })();
+}
+
 // ---- Boot ----------------------------------------------------------------
 
 (async function init() {
   await restore();
   render();
   subscribeToAgentPushes();
+  setupLiveChat();
 })();

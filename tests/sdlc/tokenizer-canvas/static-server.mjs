@@ -37,6 +37,13 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404).end();
     return;
   }
+  // Live chat engine is extension-only; the static server has no Node runtime to
+  // host it, so the iframe's /live/status probe 404s and the chat panel stays
+  // hidden — keeping the visual fixtures (5 columns, 23 model rows) stable.
+  if (pathname === "/live" || pathname.startsWith("/live/")) {
+    res.writeHead(404).end();
+    return;
+  }
 
   if (pathname === "/") pathname = "/index.html";
   const filePath = path.join(WEB_DIR, pathname);

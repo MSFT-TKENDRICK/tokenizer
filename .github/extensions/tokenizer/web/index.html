@@ -120,6 +120,58 @@
           </table>
         </div>
       </section>
+
+      <section
+        id="live-section"
+        class="card live-section"
+        aria-labelledby="live-heading"
+        hidden
+      >
+        <div class="section-head">
+          <h2 id="live-heading">Live chat</h2>
+          <p
+            id="live-status"
+            class="live-status"
+            role="status"
+            aria-live="polite"
+          >
+            <span class="live-status-dot" aria-hidden="true"></span>
+            <span id="live-status-text">Checking Copilot runtime…</span>
+          </p>
+        </div>
+        <p class="muted">
+          Chat with GitHub Copilot using your ambient sign-in. Responses are real
+          and run with tools disabled.
+        </p>
+        <div class="live-model-row">
+          <label for="live-model">Model</label>
+          <select id="live-model" aria-label="GitHub Copilot model for live chat">
+            <option value="auto">Auto</option>
+          </select>
+        </div>
+        <div
+          id="live-transcript"
+          class="live-transcript"
+          role="log"
+          aria-label="Live chat transcript"
+          aria-live="polite"
+          tabindex="0"
+        >
+          <p class="empty-note" id="live-empty">No messages yet — ask Copilot below.</p>
+        </div>
+        <form id="live-form" class="live-composer" aria-label="Live chat composer">
+          <label class="live-composer-label" for="live-input">Your message</label>
+          <textarea
+            id="live-input"
+            class="live-input"
+            spellcheck="true"
+            autocomplete="off"
+            placeholder="Ask GitHub Copilot…"
+            rows="2"
+          ></textarea>
+          <button id="live-send" type="submit" class="ghost-btn live-send">Send</button>
+        </form>
+      </section>
     </main>
 
     <footer class="page-footer">
