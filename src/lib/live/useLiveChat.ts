@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { createLiveClient, type LiveClient } from "./liveClient";
+import { type LiveClient } from "./liveClient";
 import { ENGINE_STATUS, type EngineStatus, type LiveModelInfo, type LiveStatus, type LiveUsage } from "./protocol";
 
 export interface LiveTurnState {
@@ -32,7 +32,7 @@ export interface UseLiveChat {
   readStream: (turnIndex: number) => string;
 }
 
-function liveBaseUrl(): string {
+export function liveBaseUrl(): string {
   // The canvas iframe pins an explicit, origin-absolute base (its loopback server
   // mounts the engine at /copilot/live) via a global, so the relative-base canvas
   // build never has to depend on import.meta.env.BASE_URL. The web app leaves the
@@ -49,11 +49,13 @@ function liveBaseUrl(): string {
   return `${base.replace(/\/+$/, "")}/copilot/live`;
 }
 
-export function useLiveChat(): UseLiveChat {
-  const clientRef = useRef<LiveClient | null>(null);
-  if (clientRef.current === null) {
-    clientRef.current = createLiveClient(liveBaseUrl());
-  }
+export function useLiveChat(client: LiveClient): UseLiveChat {
+  const clientRef = useRef<LiveClient>(client);
+  // Bumped on every client swap (ambient <-> token). Stale async work — status
+  // probes and in-flight stream callbacks — captures the generation it started in
+  // and bails if it no longer matches, so a previous transport can never write into
+  // the new one's state.
+  const clientGenRef = useRef(0);
 
   const [status, setStatus] = useState<LiveStatus | null>(null);
   const [liveResponses, setLiveResponses] = useState<Map<number, LiveTurnState>>(new Map());
@@ -98,11 +100,14 @@ export function useLiveChat(): UseLiveChat {
   const refreshStatus = useCallback(async (options?: { warm?: boolean }) => {
     const client = clientRef.current;
     if (!client) return;
+    const gen = clientGenRef.current;
     try {
       const next = await client.getStatus(options);
-      setStatus(next);
+      if (clientGenRef.current === gen) setStatus(next);
     } catch {
-      setStatus({ available: false, authenticated: false, engineStatus: ENGINE_STATUS.unavailable, models: [] });
+      if (clientGenRef.current === gen) {
+        setStatus({ available: false, authenticated: false, engineStatus: ENGINE_STATUS.unavailable, models: [] });
+      }
     }
   }, []);
 
@@ -115,13 +120,35 @@ export function useLiveChat(): UseLiveChat {
     return () => clearTimeout(timer);
   }, [status, refreshStatus]);
 
-  // Probe availability once on mount so the UI can gate the Live toggle (disable it
-  // on hosts with no engine) before the user ever switches into a dead Live mode.
-  // Use the non-warming probe so simulated-only users never spawn the Copilot
-  // runtime — warming stays lazy until the user actually switches into Live.
+  // React to client identity changes (ambient <-> token), and probe once on mount
+  // for the initial client. On every swap: adopt the new client, invalidate any
+  // in-flight stream, clear local live state, and re-probe with the non-warming
+  // status so simulated-only users never spawn a runtime. The probe is generation
+  // guarded so a slow previous-client status can't overwrite the new client's.
   useEffect(() => {
-    void refreshStatus({ warm: false });
-  }, [refreshStatus]);
+    clientRef.current = client;
+    const gen = ++clientGenRef.current;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    sendIdRef.current += 1;
+    streamRef.current = { turn: null, text: "" };
+    scheduleFlush();
+    setLiveResponses(new Map());
+    setLiveVersion((value) => value + 1);
+    setStreamingTurn(null);
+    setIsStreaming(false);
+    setStatus(null);
+    void (async () => {
+      try {
+        const next = await client.getStatus({ warm: false });
+        if (clientGenRef.current === gen) setStatus(next);
+      } catch {
+        if (clientGenRef.current === gen) {
+          setStatus({ available: false, authenticated: false, engineStatus: ENGINE_STATUS.unavailable, models: [] });
+        }
+      }
+    })();
+  }, [client, scheduleFlush]);
 
   const send = useCallback(
     async (turnIndex: number, conversationId: string, model: string, message: string) => {
@@ -132,7 +159,8 @@ export function useLiveChat(): UseLiveChat {
       const controller = new AbortController();
       abortRef.current = controller;
       const myId = ++sendIdRef.current;
-      const isCurrent = () => sendIdRef.current === myId;
+      const myGen = clientGenRef.current;
+      const isCurrent = () => sendIdRef.current === myId && clientGenRef.current === myGen;
 
       streamRef.current = { turn: turnIndex, text: "" };
       scheduleFlush();

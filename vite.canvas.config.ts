@@ -16,6 +16,11 @@ const dir = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   base: './',
+  // The canvas always uses the extension's ambient GitHub auth, never the website
+  // token path — keep the browser token connector compiled out of this build.
+  define: {
+    __BROWSER_TOKEN_AUTH__: 'false',
+  },
   plugins: [react()],
   build: {
     target: 'es2020',

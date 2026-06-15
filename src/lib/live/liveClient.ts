@@ -5,29 +5,9 @@
 
 import { LIVE_ENDPOINTS, SSE_EVENTS, joinLivePath } from "./protocol";
 import type { LiveStatus, LiveUsage } from "./protocol";
+import type { LiveChatHandlers, LiveChatRequest, LiveClient } from "./liveTransport";
 
-export interface LiveChatRequest {
-  conversationId: string;
-  model: string;
-  message: string;
-  signal?: AbortSignal;
-}
-
-export interface LiveChatHandlers {
-  onReady?: (data: { conversationId?: string }) => void;
-  onDelta?: (text: string) => void;
-  onUsage?: (usage: LiveUsage) => void;
-  onMessage?: (text: string, data: { model?: string }) => void;
-  onError?: (message: string) => void;
-  onDone?: () => void;
-}
-
-export interface LiveClient {
-  getStatus(options?: { warm?: boolean }): Promise<LiveStatus>;
-  streamChat(request: LiveChatRequest, handlers?: LiveChatHandlers): Promise<void>;
-  reset(conversationId: string): Promise<void>;
-  readonly token: string | undefined;
-}
+export type { LiveChatHandlers, LiveChatRequest, LiveClient } from "./liveTransport";
 
 export function createLiveClient(baseUrl: string): LiveClient {
   let token: string | undefined;

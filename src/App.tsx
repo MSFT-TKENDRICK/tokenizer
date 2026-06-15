@@ -28,7 +28,9 @@ import {
   type ResponseResolver,
 } from "./lib/examples";
 import { ENGINE_STATUS, toSdkModelId } from "./lib/live/protocol";
-import { useLiveChat } from "./lib/live/useLiveChat";
+import { useLiveChat, liveBaseUrl } from "./lib/live/useLiveChat";
+import { createLiveClient, type LiveClient } from "./lib/live/liveClient";
+import { LiveControls } from "./lib/live/LiveControls";
 import { LiveMessageStream } from "./lib/live/LiveMessageStream";
 import "./App.css";
 
@@ -304,7 +306,32 @@ export default function App() {
   const [plainScrollTop, setPlainScrollTop] = useState(0);
   const [mode, setMode] = useState<ChatMode>("simulated");
   const [conversationId, setConversationId] = useState<string>(() => createConversationId());
-  const live = useLiveChat();
+
+  // Live transport selection. The default is the loopback/ambient client the canvas
+  // extension and `npm run dev` use. On the published website (capability flag baked
+  // in at build time) the user can connect a GitHub token, which swaps in a
+  // browser-direct GitHub Models client implementing the same LiveClient contract.
+  // The raw token is captured inside that client's closure on connect — App never
+  // holds it in state, so it can't leak through DevTools or error reporting.
+  const browserTokenAuth = __BROWSER_TOKEN_AUTH__;
+  const [liveClient, setLiveClient] = useState<LiveClient>(() => createLiveClient(liveBaseUrl()));
+  const [liveTokenActive, setLiveTokenActive] = useState(false);
+  const live = useLiveChat(liveClient);
+
+  const connectLiveToken = useCallback(async (token: string) => {
+    // Gate on the compile-time capability literal so the canvas/extension build
+    // (flag=false) tree-shakes the token client out entirely: the early return makes
+    // the dynamic import unreachable, leaving zero browser-token code on the ambient
+    // surface. On the Pages build (flag=true) the import is retained and lazy-loaded.
+    if (!__BROWSER_TOKEN_AUTH__) return;
+    const { createTokenLiveClient } = await import("./lib/live/tokenLiveClient");
+    setLiveClient(createTokenLiveClient({ token }));
+    setLiveTokenActive(true);
+  }, []);
+  const forgetLiveToken = useCallback(() => {
+    setLiveClient(createLiveClient(liveBaseUrl()));
+    setLiveTokenActive(false);
+  }, []);
 
   const isLive = mode === "live";
   const liveReady = isLive && live.available && live.authenticated && live.engineStatus === ENGINE_STATUS.ready;
@@ -312,6 +339,14 @@ export default function App() {
   const liveWarming = isLive && live.available && live.engineStatus === ENGINE_STATUS.warming;
   const liveUnavailable =
     isLive && live.probed && (!live.available || live.engineStatus === ENGINE_STATUS.error);
+  // Website token path: surface the connector until Live is actually ready, treat a
+  // rejected token (reachable-but-unauthenticated) as a token error rather than a
+  // dead engine, and show a validating state while the swap re-probes.
+  const showLiveTokenForm = isLive && browserTokenAuth && !liveReady && !liveWarming;
+  const liveTokenValidating = liveTokenActive && isLive && !live.probed;
+  const liveTokenRejected = liveTokenActive && liveSignedOut;
+  const liveServedModelNote =
+    "Responses come from GitHub Models (openai/gpt-4o-mini); the selected model drives token & credit estimates only.";
 
   // In Live mode, swap the real Copilot answer in for the canned simulation. A
   // finalized turn contributes its real (possibly empty) text; a pending,
@@ -660,35 +695,58 @@ export default function App() {
     return isLive && live.modelIds.size > 0 && id !== "auto" && !live.modelIds.has(toSdkModelId(id) ?? id);
   }
 
-  const liveStatusMessage = liveUnavailable
-    ? live.available
-      ? "Live unavailable — the Copilot runtime failed to start. Try reloading."
-      : "Live unavailable — start the Copilot CLI, then reload."
-    : liveSignedOut
-      ? "Live · sign in to GitHub Copilot to chat."
-      : liveWarming
-        ? "Starting Copilot runtime…"
-        : liveReady
-          ? live.login
-            ? `Live · signed in as ${live.login}`
-            : "Live · ready"
-          : isLive
-            ? "Checking Copilot runtime…"
-            : "";
+  const liveStatusTone: "error" | "ready" | "warming" =
+    liveUnavailable || liveSignedOut || liveTokenRejected ? "error" : liveReady ? "ready" : "warming";
+  const liveToggleDisabled = live.probed && !live.available && !isLive && !browserTokenAuth;
+  const liveToggleTitle = browserTokenAuth
+    ? "Connect a GitHub token for real Copilot chat"
+    : live.probed && !live.available
+      ? "Live unavailable in this environment"
+      : "Use ambient GitHub Copilot auth for real chat responses";
+
+  const liveStatusMessage = !isLive
+    ? ""
+    : browserTokenAuth
+      ? liveReady
+        ? live.login
+          ? `Live · token connected as ${live.login}`
+          : "Live · token connected (GitHub Models)"
+        : liveTokenRejected
+          ? "Live · token rejected — check the models:read scope."
+          : liveTokenValidating
+            ? "Live · validating token…"
+            : "Live · connect a GitHub token to chat."
+      : liveUnavailable
+        ? live.available
+          ? "Live unavailable — the Copilot runtime failed to start. Try reloading."
+          : "Live unavailable — start the Copilot CLI, then reload."
+        : liveSignedOut
+          ? "Live · sign in to GitHub Copilot to chat."
+          : liveWarming
+            ? "Starting Copilot runtime…"
+            : liveReady
+              ? live.login
+                ? `Live · signed in as ${live.login}`
+                : "Live · ready"
+              : "Checking Copilot runtime…";
   const selectedLiveTurn = isLive && selectedTurnIndex >= 0 ? live.liveResponses.get(selectedTurnIndex) : undefined;
   const selectedLiveUsage = selectedLiveTurn?.usage;
   const submitButtonTitle = isLive
-    ? liveUnavailable
-      ? "Live runtime unavailable"
-      : liveSignedOut
-        ? "Sign in to GitHub Copilot to chat"
-        : liveWarming
-          ? "Starting Copilot runtime…"
-          : live.isStreaming
-            ? "Waiting for the current response…"
-            : draftUserMessage.trim().length === 0
-              ? "Type a message to send"
-              : "Send message to Copilot"
+    ? browserTokenAuth && !liveReady
+      ? liveTokenRejected
+        ? "Token rejected — update it to chat"
+        : "Connect a GitHub token to chat"
+      : liveUnavailable
+        ? "Live runtime unavailable"
+        : liveSignedOut
+          ? "Sign in to GitHub Copilot to chat"
+          : liveWarming
+            ? "Starting Copilot runtime…"
+            : live.isStreaming
+              ? "Waiting for the current response…"
+              : draftUserMessage.trim().length === 0
+                ? "Type a message to send"
+                : "Send message to Copilot"
     : canSubmitUserMessage
       ? "Submit user message"
       : "No more sample messages";
@@ -746,43 +804,21 @@ export default function App() {
                 Token IDs
               </button>
             </div>
-            <div className="mode-bar">
-              <div className="mode-toggle" role="group" aria-label="Chat response mode">
-                <button
-                  aria-pressed={!isLive}
-                  className={!isLive ? "active" : ""}
-                  type="button"
-                  title="Use the built-in simulated conversation"
-                  onClick={() => switchMode("simulated")}
-                >
-                  Simulated
-                </button>
-                <button
-                  aria-pressed={isLive}
-                  className={isLive ? "active" : ""}
-                  type="button"
-                  disabled={live.probed && !live.available && !isLive}
-                  title={
-                    live.probed && !live.available
-                      ? "Live unavailable in this environment"
-                      : "Use ambient GitHub Copilot auth for real chat responses"
-                  }
-                  onClick={() => switchMode("live")}
-                >
-                  Live
-                </button>
-              </div>
-              {isLive ? (
-                <p
-                  className={`live-status live-status-${liveUnavailable || liveSignedOut ? "error" : liveReady ? "ready" : "warming"}`}
-                  role="status"
-                  aria-live="polite"
-                >
-                  <span className="live-status-dot" aria-hidden="true" />
-                  {liveStatusMessage}
-                </p>
-              ) : null}
-            </div>
+            <LiveControls
+              isLive={isLive}
+              liveDisabled={liveToggleDisabled}
+              liveTitle={liveToggleTitle}
+              onSelectMode={switchMode}
+              statusTone={liveStatusTone}
+              statusMessage={liveStatusMessage}
+              showTokenForm={showLiveTokenForm}
+              tokenActive={liveTokenActive}
+              tokenValidating={liveTokenValidating}
+              tokenRejected={liveTokenRejected}
+              servedModelNote={liveServedModelNote}
+              onConnectToken={connectLiveToken}
+              onForgetToken={forgetLiveToken}
+            />
           </div>
 
           <div className="text-surface">
@@ -969,7 +1005,9 @@ export default function App() {
                 value={draftUserMessage}
                 placeholder={
                   isLive
-                    ? "Ask GitHub Copilot anything — responses use your ambient sign-in..."
+                    ? browserTokenAuth
+                      ? "Ask GitHub Copilot anything — responses use your connected token..."
+                      : "Ask GitHub Copilot anything — responses use your ambient sign-in..."
                     : "Ask Copilot or paste the user request to estimate its prompt impact..."
                 }
                 aria-label="Chat message input"
