@@ -100,6 +100,21 @@ test("@FR-006 @NFR-001 comparison table is semantic and sortable by cost & conte
   expect(seriousOrCritical).toEqual([]);
 });
 
+test("@FR-006 tiny inputs still render the full cost table without a formatter crash", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (e) => pageErrors.push(e.message));
+  // A 1-token input drives the cheapest models' per-input credit cost below
+  // 1e-4. That used to set minimumFractionDigits(6) > maximumFractionDigits(4)
+  // in the credits formatter, throwing "RangeError: maximumFractionDigits value
+  // is out of range" and blanking the entire model-cost table on open.
+  await page.fill("#text-input", "a");
+  await expect(page.locator("#stat-tokens")).toHaveText("1");
+  await expect(page.locator("#models-body tr")).toHaveCount(23);
+  // The cheapest model's credit cell renders extra precision instead of crashing.
+  await expect(page.locator("#models-body tr td:nth-child(4)").first()).toHaveText(/\d/);
+  expect(pageErrors).toEqual([]);
+});
+
 test("@FR-007 models over the context window get a non-color over-limit affordance", async ({ page }) => {
   // ~130,000 tokens exceeds the 128K-window models (e.g. GPT-5 mini).
   const big = "ab ".repeat(65_000);

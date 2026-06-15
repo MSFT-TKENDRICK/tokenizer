@@ -66,10 +66,11 @@ function formatUsd(value) {
 }
 
 function formatCredits(value) {
-  const maximumFractionDigits = value >= 10 ? 1 : value >= 1 ? 2 : 4;
+  const tiny = value > 0 && value < 0.0001;
+  const maximumFractionDigits = tiny ? 6 : value >= 10 ? 1 : value >= 1 ? 2 : 4;
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits,
-    minimumFractionDigits: value > 0 && value < 0.0001 ? 6 : 0,
+    minimumFractionDigits: tiny ? 6 : 0,
   }).format(value);
 }
 
