@@ -188,6 +188,44 @@ describe("createTokenLiveClient.streamChat", () => {
     expect(final).toBe("AB");
   });
 
+  it("ignores a malformed JSON frame instead of crashing the stream", async () => {
+    const chunks = [
+      'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n',
+      "data: {not valid json\n\n",
+      'data: {"choices":[{"delta":{"content":"lo"}}]}\n\n',
+      "data: [DONE]\n\n",
+    ];
+    const { impl } = recordingFetch(chatHandler(chunks));
+    const client = createTokenLiveClient({ token: "tok", fetchImpl: impl });
+    let final: string | undefined;
+    let done = false;
+    await client.streamChat(
+      { conversationId: "c1", model: "auto", message: "hi" },
+      { onMessage: (t) => (final = t), onDone: () => (done = true) },
+    );
+    expect(final).toBe("Hello");
+    expect(done).toBe(true);
+  });
+
+  it("surfaces a clear message on a 429 rate limit without leaking the token", async () => {
+    const { impl } = recordingFetch((url) => {
+      if (url.startsWith(USER_URL)) return okUser();
+      if (url.startsWith(CHAT_URL)) {
+        return { ok: false, status: 429, body: null, json: async () => ({ message: "rate limited" }) };
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    const client = createTokenLiveClient({ token: "secret-token-value", fetchImpl: impl });
+    await expect(
+      client.streamChat({ conversationId: "c1", model: "auto", message: "hi" }, {}),
+    ).rejects.toThrow(/rate limit/i);
+    try {
+      await client.streamChat({ conversationId: "c1", model: "auto", message: "hi" }, {});
+    } catch (error) {
+      expect(String(error)).not.toContain("secret-token-value");
+    }
+  });
+
   it("maps the selected catalog model to a GitHub Models id in the request body", async () => {
     const { impl, calls } = recordingFetch(chatHandler(helloChunks));
     const client = createTokenLiveClient({ token: "tok", fetchImpl: impl });
