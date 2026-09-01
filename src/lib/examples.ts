@@ -12,6 +12,12 @@ export interface PromptSection {
   content: string;
 }
 
+// Optional per-turn override used by Live mode to substitute the real Copilot
+// assistant text in place of the canned simulation. Returning a string (even an
+// empty one) is treated as an intentional Live override; return undefined to let
+// the canned conversationAssistantResponses stand (Simulated mode).
+export type ResponseResolver = (turnIndex: number) => string | undefined;
+
 export const baseSystem = `<system>
 You are an expert AI programming assistant, working with a user in the VS Code editor.
 Your name is GitHub Copilot.
@@ -113,13 +119,20 @@ Fetch a pull request by owner, repo, and pull request number.
 - Return concise findings with links and actionable next steps.
 </instruction>`;
 
-export function assistantResponseForTurn(turnIndex: number) {
+export function assistantResponseForTurn(turnIndex: number, override?: ResponseResolver) {
+  const live = override?.(turnIndex);
+  // A resolver that returns a string (even "") is an intentional Live override;
+  // only fall back to the canned simulation when there is no override at all, so
+  // Live mode never tokenizes or displays a fake assistant answer.
+  if (live != null) {
+    return live;
+  }
   return conversationAssistantResponses[turnIndex] ?? "I would answer using the submitted user request and the current prompt context.";
 }
 
-export function assistantResponseTraceForTurn(turnIndex: number) {
+export function assistantResponseTraceForTurn(turnIndex: number, override?: ResponseResolver) {
   return formatPromptXml(`<assistantResponse>
-${assistantResponseForTurn(turnIndex)}
+${assistantResponseForTurn(turnIndex, override)}
 </assistantResponse>`);
 }
 
@@ -249,7 +262,10 @@ export function composePrompt(selectedLayerIds: readonly string[], userRequest =
     .join("\n\n");
 }
 
-export function composeConversationRequest(messages: readonly string[], options: { includeAssistantResponses?: boolean } = {}) {
+export function composeConversationRequest(
+  messages: readonly string[],
+  options: { includeAssistantResponses?: boolean; responseResolver?: ResponseResolver } = {},
+) {
   if (messages.length === 0) {
     return "";
   }
@@ -257,7 +273,7 @@ export function composeConversationRequest(messages: readonly string[], options:
   return messages.map((message, index) => [
     userPromptOneRaw,
     replaceTaggedContent(userPromptTwoRaw, "userRequest", message),
-    ...(options.includeAssistantResponses ? [assistantResponseTraceForTurn(index)] : []),
+    ...(options.includeAssistantResponses ? [assistantResponseTraceForTurn(index, options.responseResolver)] : []),
   ].join("\n\n")).join("\n\n");
 }
 

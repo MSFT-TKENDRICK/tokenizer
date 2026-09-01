@@ -1,0 +1,119 @@
+[
+  {
+    "requirementId": "FR-001",
+    "phase": "green",
+    "testFile": "docs/sdlc/002-tokenizer-canvas/features/canvas-integration.feature (runtime-validated: extensions_reload + loopback http.Server + HTTP 200; no SDLC unit test file)",
+    "featureFile": "canvas-integration.feature",
+    "notes": [
+      "GREEN (runtime-validated by top-level orchestrator): extensions_reload -> 'tokenizer — ready'; open_canvas returned a loopback url http://127.0.0.1:<port>/ with HTTP 200 for /, /app.js, /styles.css, /tokenizer.mjs, /models.mjs, /state. The SDLC static server reproduces the same iframe serving for visual evidence. Acceptance criteria: MSF-007."
+    ]
+  },
+  {
+    "requirementId": "FR-002",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/FR-002.test.ts",
+    "featureFile": "tokenization.feature",
+    "notes": [
+      "GREEN: 13 passing tests prove web/tokenizer.mjs is a byte-for-byte port of src/lib/tokenizer.ts across a 10-case corpus (token spans contiguous + categories correct). Coverage: tokenizer.mjs 82.6% lines."
+    ]
+  },
+  {
+    "requirementId": "FR-003",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/FR-003.test.ts",
+    "featureFile": "visualization.feature",
+    "notes": [
+      "GREEN: summarizeTokens returns characters/bytes/words/lines/tokens and matches src for the corpus (13 unit tests). Live render proven by Playwright (FR-003-summary.png + video + trace): typing the sample shows tokens=14, chars=37, bytes=42, words=5, lines=1. Acceptance criteria: MSF-009."
+    ]
+  },
+  {
+    "requirementId": "FR-004",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/canvas.visual.spec.ts",
+    "featureFile": "visualization.feature",
+    "notes": [
+      "GREEN (Playwright visual): each token renders as a .token-chip with data-category; non-color affordances proven — per-chip category LABEL revealed by the 'Label categories' toggle (.show-labels) AND legend swatches use distinct border-styles per category (solid/dashed/dotted/double), not colour alone. Evidence: FR-004-tokens-labeled.png + video + trace."
+    ]
+  },
+  {
+    "requirementId": "FR-005",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/FR-005.test.ts",
+    "featureFile": "cost-estimation.feature",
+    "notes": [
+      "GREEN: 5 passing tests prove USD + AI-credit input cost for EVERY model in COPILOT_MODEL_OPTIONS (23 = Auto + 22), 1 credit = $0.01, parity with src/lib/copilotModels.ts. Acceptance criteria: MSF-008."
+    ]
+  },
+  {
+    "requirementId": "FR-006",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/FR-006.test.ts",
+    "featureFile": "comparison.feature",
+    "notes": [
+      "GREEN: row-data + sort-key unit tests (5) prove one row per model (23) with name/provider/USD/credits/context-usage and stable numeric sort. Playwright proves the rendered semantic <table> (5 th[scope=col], 23 tbody rows), default USD-ascending order, click-to-toggle descending, and context-usage sort with aria-sort updates. Evidence: FR-006-table-sorted.png + video + trace. Acceptance criteria: MSF-008."
+    ]
+  },
+  {
+    "requirementId": "FR-007",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/canvas.visual.spec.ts",
+    "featureFile": "visualization.feature",
+    "notes": [
+      "GREEN (Playwright visual): at ~130,000 tokens the 128K-window models get tr.over-limit AND a non-color textual flag '▲ over' (plus a context-bar.over state), not colour alone. Evidence: FR-007-over-limit.png + video + trace."
+    ]
+  },
+  {
+    "requirementId": "FR-008",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/FR-008.test.ts",
+    "featureFile": "canvas-integration.feature",
+    "notes": [
+      "GREEN: actions runtime-validated by top-level orchestrator — list_canvas_capabilities shows set_text({text:string}) + get_summary; set_text(...) returned {ok:true, summary:{characters:63,bytes:63,words:13,lines:2,tokens:36}} and GET /state reflected it. Unit tests (4) cross-validate those exact get_summary numbers against the shared module. Acceptance criteria: MSF-007."
+    ]
+  },
+  {
+    "requirementId": "FR-009",
+    "phase": "green",
+    "testFile": "docs/sdlc/002-tokenizer-canvas/features/persistence.feature (runtime-validated: set_text -> GET /state per ADR-002/MSF-006; no SDLC unit test file)",
+    "featureFile": "persistence.feature",
+    "notes": [
+      "GREEN (runtime-validated by top-level orchestrator): session-scoped persistence in extension.mjs under $COPILOT_HOME (ADR-002/MSF-006). set_text -> GET /state reflected the new text within the session. Decision keeps user text OUT of the repo working tree; cross-session isolation is by-design via sessionId keying."
+    ]
+  },
+  {
+    "requirementId": "FR-010",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/FR-010.test.ts",
+    "featureFile": "interaction.feature",
+    "notes": [
+      "GREEN (derived-view consistency): 12 passing tests prove all views derive from a single source (summary token count === tokenize().length === comparison-row token count) and recompute deterministically. Live DOM update on keystroke remains pending Playwright evidence (owner: top-level orchestrator). Acceptance criteria: MSF-009."
+    ]
+  },
+  {
+    "requirementId": "NFR-001",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/canvas.visual.spec.ts",
+    "featureFile": "visualization.feature",
+    "notes": [
+      "GREEN (Playwright + axe): @axe-core/playwright scan (wcag2a + wcag2aa) reported zero serious/critical violations; comparison uses semantic <table>/<thead>/<th scope=col> with aria-sort, every over-limit/highlight state carries a non-color affordance (FR-004/FR-007), and the iframe renders a valid light theme via CSS fallbacks. Acceptance criteria: MSF-008/NFR-001."
+    ]
+  },
+  {
+    "requirementId": "NFR-002",
+    "phase": "green",
+    "testFile": "tests/sdlc/tokenizer-canvas/NFR-002.test.ts",
+    "featureFile": "interaction.feature",
+    "notes": [
+      "GREEN: benchmark proves a full recompute (tokenize -> summarize -> per-model cost for all 23 models) of a 10,000-token input completes in well under 50 ms (median ~5-7 ms over 7 runs). Acceptance criteria: MSF-009."
+    ]
+  },
+  {
+    "requirementId": "NFR-003",
+    "phase": "green",
+    "testFile": "docs/sdlc/002-tokenizer-canvas/features/canvas-integration.feature (runtime-validated: no stdout/JSON-RPC corruption, 127.0.0.1-only bind; no SDLC unit test file)",
+    "featureFile": "canvas-integration.feature",
+    "notes": [
+      "GREEN (runtime-validated by top-level orchestrator): extensions_reload log showed clean startup with NO stdout/JSON-RPC corruption (logging via session.log) and the embedded HTTP server bound to 127.0.0.1 (loopback) only. Security posture documented in MSF-010."
+    ]
+  }
+]

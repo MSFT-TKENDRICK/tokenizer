@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="GitHub Copilot tokenizer — estimate tokens and AI credits, with simulated and live Copilot chat."
+    />
+    <title>GitHub Copilot Tokenization</title>
+    <script>
+      // The canvas serves the Live engine under /copilot/live on its own loopback
+      // origin; pin the client there explicitly so the relative-base build never
+      // has to depend on import.meta.env.BASE_URL inside the iframe.
+      window.__COPILOT_LIVE_BASE__ = "/copilot/live";
+      // Mirror the host's color mode (or the OS preference) onto data-theme, which
+      // App.css keys its dark palette off of.
+      (() => {
+        const root = document.documentElement;
+        const media = window.matchMedia("(prefers-color-scheme: dark)");
+        const sync = () => {
+          const host = root.getAttribute("data-color-mode");
+          const dark = host === "dark" || (host !== "light" && media.matches);
+          root.setAttribute("data-theme", dark ? "dark" : "light");
+        };
+        sync();
+        new MutationObserver(sync).observe(root, {
+          attributes: true,
+          attributeFilter: ["data-color-mode"],
+        });
+        media.addEventListener?.("change", sync);
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/canvas-fHZUsjtb.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-Bh1tDfsg.js">
+    <link rel="modulepreload" crossorigin href="./assets/react-3QoHy54z.js">
+    <link rel="stylesheet" crossorigin href="./assets/canvas-DZfeqDVH.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

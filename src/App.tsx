@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   summarizeTokens,
   tokenize,
@@ -25,10 +25,17 @@ import {
   defaultUserRequest,
   getPromptSections,
   promptPatchLayers,
+  type ResponseResolver,
 } from "./lib/examples";
+import { ENGINE_STATUS, toSdkModelId } from "./lib/live/protocol";
+import { useLiveChat, liveBaseUrl } from "./lib/live/useLiveChat";
+import { createLiveClient, type LiveClient } from "./lib/live/liveClient";
+import { LiveControls } from "./lib/live/LiveControls";
+import { LiveMessageStream } from "./lib/live/LiveMessageStream";
 import "./App.css";
 
 type ViewMode = "chat" | "plain" | "tokens" | "ids";
+type ChatMode = "simulated" | "live";
 type InvoiceDirection = -1 | 0 | 1;
 
 interface InvoiceRow {
@@ -59,6 +66,13 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
 }
 
+function createConversationId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits: value < 0.01 ? 4 : 2,
@@ -69,10 +83,11 @@ function formatCurrency(value: number) {
 }
 
 function formatAiCredits(value: number) {
-  const maximumFractionDigits = value >= 10 ? 1 : value >= 1 ? 2 : 4;
+  const tiny = value > 0 && value < 0.0001;
+  const maximumFractionDigits = tiny ? 6 : value >= 10 ? 1 : value >= 1 ? 2 : 4;
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits,
-    minimumFractionDigits: value > 0 && value < 0.0001 ? 6 : 0,
+    minimumFractionDigits: tiny ? 6 : 0,
   }).format(value);
 }
 
@@ -289,6 +304,63 @@ export default function App() {
   const [selectedModelId, setSelectedModelId] = useState("auto");
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [plainScrollTop, setPlainScrollTop] = useState(0);
+  const [mode, setMode] = useState<ChatMode>("simulated");
+  const [conversationId, setConversationId] = useState<string>(() => createConversationId());
+
+  // Live transport selection. The default is the loopback/ambient client the canvas
+  // extension and `npm run dev` use. On the published website (capability flag baked
+  // in at build time) the user can connect a GitHub token, which swaps in a
+  // browser-direct GitHub Models client implementing the same LiveClient contract.
+  // The raw token is captured inside that client's closure on connect — App never
+  // holds it in state, so it can't leak through DevTools or error reporting.
+  const browserTokenAuth = __BROWSER_TOKEN_AUTH__;
+  const [liveClient, setLiveClient] = useState<LiveClient>(() => createLiveClient(liveBaseUrl()));
+  const [liveTokenActive, setLiveTokenActive] = useState(false);
+  const live = useLiveChat(liveClient);
+
+  const connectLiveToken = useCallback(async (token: string) => {
+    // Gate on the compile-time capability literal so the canvas/extension build
+    // (flag=false) tree-shakes the token client out entirely: the early return makes
+    // the dynamic import unreachable, leaving zero browser-token code on the ambient
+    // surface. On the Pages build (flag=true) the import is retained and lazy-loaded.
+    if (!__BROWSER_TOKEN_AUTH__) return;
+    const { createTokenLiveClient } = await import("./lib/live/tokenLiveClient");
+    setLiveClient(createTokenLiveClient({ token }));
+    setLiveTokenActive(true);
+  }, []);
+  const forgetLiveToken = useCallback(() => {
+    setLiveClient(createLiveClient(liveBaseUrl()));
+    setLiveTokenActive(false);
+  }, []);
+
+  const isLive = mode === "live";
+  const liveReady = isLive && live.available && live.authenticated && live.engineStatus === ENGINE_STATUS.ready;
+  const liveSignedOut = isLive && live.available && !live.authenticated && live.engineStatus === ENGINE_STATUS.ready;
+  const liveWarming = isLive && live.available && live.engineStatus === ENGINE_STATUS.warming;
+  const liveUnavailable =
+    isLive && live.probed && (!live.available || live.engineStatus === ENGINE_STATUS.error);
+  // Website token path: surface the connector until Live is actually ready, treat a
+  // rejected token (reachable-but-unauthenticated) as a token error rather than a
+  // dead engine, and show a validating state while the swap re-probes.
+  const showLiveTokenForm = isLive && browserTokenAuth && !liveReady && !liveWarming;
+  const liveTokenValidating = liveTokenActive && isLive && !live.probed;
+  const liveTokenRejected = liveTokenActive && liveSignedOut;
+  const liveServedModelNote =
+    "Responses come from GitHub Models (openai/gpt-4o-mini); the selected model drives token & credit estimates only.";
+
+  // In Live mode, swap the real Copilot answer in for the canned simulation. A
+  // finalized turn contributes its real (possibly empty) text; a pending,
+  // streaming, or absent turn contributes "" so the prompt + invoice stay at 0
+  // and we never fall back to unrelated simulated text.
+  const liveResponseResolver = useCallback<ResponseResolver>(
+    (turnIndex) => {
+      if (!isLive) return undefined;
+      const entry = live.liveResponses.get(turnIndex);
+      if (entry && entry.status !== "streaming") return entry.text;
+      return "";
+    },
+    [isLive, live.liveResponses],
+  );
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
   const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
@@ -300,8 +372,11 @@ export default function App() {
     [conversationTurns, draftUserMessage, selectedTurnIndex],
   );
   const activeConversationRequest = useMemo(
-    () => composeConversationRequest(previewTurns, { includeAssistantResponses: selectedTurnIndex >= 0 }),
-    [previewTurns, selectedTurnIndex],
+    () => composeConversationRequest(previewTurns, {
+      includeAssistantResponses: selectedTurnIndex >= 0,
+      responseResolver: liveResponseResolver,
+    }),
+    [previewTurns, selectedTurnIndex, liveResponseResolver],
   );
   const promptSections = useMemo(
     () => getPromptSections(selectedLayerIds, activeConversationRequest),
@@ -317,7 +392,7 @@ export default function App() {
   const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
   const invoicePages = useMemo(
     () => conversationTurns.map((_, index) => buildInvoicePage(index)),
-    [conversationTurns, selectedLayerIds, selectedModel],
+    [conversationTurns, selectedLayerIds, selectedModel, isLive, live.liveResponses, live.liveVersion],
   );
   const selectedInvoicePage = selectedTurnIndex >= 0 ? invoicePages[selectedTurnIndex] : buildInvoicePage(-1);
   const invoiceRows = selectedInvoicePage.rows;
@@ -343,16 +418,14 @@ export default function App() {
   const invoicePageCount = conversationTurns.length;
   const canNavigateInvoiceBack = selectedTurnIndex > 0;
   const canNavigateInvoiceForward = selectedTurnIndex >= 0 && selectedTurnIndex < conversationTurns.length - 1;
-  const canSubmitUserMessage = draftUserMessage.trim().length > 0;
-  const chatTranscript = conversationTurns.flatMap((message, index) => [
-    { id: `user-${index}`, role: "user" as const, label: `User message ${index + 1}`, content: message },
-    {
-      id: `assistant-${index}`,
-      role: "assistant" as const,
-      label: `Assistant response ${index + 1}`,
-      content: assistantResponseForTurn(index),
-    },
-  ]);
+  const canSubmitUserMessage = draftUserMessage.trim().length > 0 && (!isLive || (liveReady && !live.isStreaming));
+
+  function liveAssistantOutputTokens(turnIndex: number) {
+    const entry = live.liveResponses.get(turnIndex);
+    const finalText = entry && entry.status !== "streaming" ? entry.text : "";
+    if (!finalText) return 0;
+    return tokenize(assistantResponseTraceForTurn(turnIndex, () => finalText)).length;
+  }
 
   function buildInvoicePage(turnIndex: number) {
     const optionalRows = promptPatchLayers.map((layer) => ({
@@ -417,7 +490,9 @@ export default function App() {
         aiCredits: estimateMixedInputAiCredits(uncachedInputTokens, cachedTokens, selectedModel),
       };
     });
-    const assistantOutputTokens = tokenize(assistantResponseTraceForTurn(turnIndex)).length;
+    const assistantOutputTokens = isLive
+      ? liveAssistantOutputTokens(turnIndex)
+      : tokenize(assistantResponseTraceForTurn(turnIndex)).length;
     rows.push({
       id: "assistant",
       label: "Assistant response",
@@ -474,6 +549,29 @@ export default function App() {
     });
   }, [conversationTurns.length, viewMode]);
 
+  // If the selected model isn't offered by the live runtime, fall back to Auto
+  // so we never silently submit a different model id than the one shown.
+  useEffect(() => {
+    if (!liveReady || live.modelIds.size === 0 || selectedModelId === "auto") {
+      return;
+    }
+    const sdkId = toSdkModelId(selectedModelId) ?? selectedModelId;
+    if (!live.modelIds.has(sdkId)) {
+      setSelectedModelId("auto");
+    }
+  }, [liveReady, live.modelIds, selectedModelId]);
+
+  // Re-render the live transcript when deltas finalize while the user watches.
+  useEffect(() => {
+    if (viewMode === "chat" && (live.isStreaming || live.liveVersion > 0)) {
+      requestAnimationFrame(() => {
+        if (chatTranscriptRef.current) {
+          chatTranscriptRef.current.scrollTop = chatTranscriptRef.current.scrollHeight;
+        }
+      });
+    }
+  }, [live.isStreaming, live.liveVersion, viewMode]);
+
   function scrollPlainEditorTo(textValue: string, marker?: string) {
     const markerIndex = marker ? textValue.indexOf(marker) : -1;
     const targetText = markerIndex >= 0 ? textValue.slice(0, markerIndex) : "";
@@ -509,12 +607,39 @@ export default function App() {
   function resetPrompt() {
     const nextText = composePrompt([], "");
     setSelectedLayerIds([]);
-    setDraftUserMessage(defaultUserRequest);
+    setDraftUserMessage(isLive ? "" : defaultUserRequest);
     setConversationTurns([]);
     setInvoicePageIndex(0);
     setInvoiceDirection(0);
     setViewMode("chat");
+    if (isLive) {
+      live.reset(conversationId);
+      setConversationId(createConversationId());
+    }
     scrollPlainEditorTo(nextText);
+  }
+
+  function switchMode(nextMode: ChatMode) {
+    if (nextMode === mode) return;
+    // A mode switch is a conversation boundary: simulated turns aren't real SDK
+    // turns (and vice versa), so carrying the transcript/invoice across modes would
+    // blank out existing turns or overwrite real answers with canned ones. Dispose
+    // any live session we're leaving and start a fresh conversation.
+    if (isLive) live.reset(conversationId);
+    else live.clear();
+    setConversationTurns([]);
+    setInvoicePageIndex(0);
+    setInvoiceDirection(0);
+    setViewMode("chat");
+    setConversationId(createConversationId());
+    if (nextMode === "live") {
+      setMode("live");
+      setDraftUserMessage("");
+      void live.refreshStatus();
+    } else {
+      setMode("simulated");
+      setDraftUserMessage(defaultUserRequest);
+    }
   }
 
   function submitUserMessage(event: FormEvent<HTMLFormElement>) {
@@ -523,8 +648,21 @@ export default function App() {
       return;
     }
 
-    const nextTurns = [...conversationTurns, draftUserMessage];
+    const message = draftUserMessage;
+    const nextTurns = [...conversationTurns, message];
     const nextTurnIndex = nextTurns.length - 1;
+
+    if (isLive) {
+      setConversationTurns(nextTurns);
+      setDraftUserMessage("");
+      setInvoicePageIndex(nextTurnIndex);
+      setInvoiceDirection(1);
+      setViewMode("chat");
+      void live.send(nextTurnIndex, conversationId, selectedModelId, message.trim());
+      chatInputRef.current?.focus({ preventScroll: true });
+      return;
+    }
+
     const nextConversationRequest = composeConversationRequest(nextTurns, { includeAssistantResponses: true });
     const nextText = composePrompt(selectedLayerIds, nextConversationRequest);
     setConversationTurns(nextTurns);
@@ -552,6 +690,66 @@ export default function App() {
 
     return tokenize(composePrompt(nextLayerIds, activeConversationRequest)).length - tokens.length;
   }
+
+  function liveModelDisabled(id: string) {
+    return isLive && live.modelIds.size > 0 && id !== "auto" && !live.modelIds.has(toSdkModelId(id) ?? id);
+  }
+
+  const liveStatusTone: "error" | "ready" | "warming" =
+    liveUnavailable || liveSignedOut || liveTokenRejected ? "error" : liveReady ? "ready" : "warming";
+  const liveToggleDisabled = live.probed && !live.available && !isLive && !browserTokenAuth;
+  const liveToggleTitle = browserTokenAuth
+    ? "Connect a GitHub token for real Copilot chat"
+    : live.probed && !live.available
+      ? "Live unavailable in this environment"
+      : "Use ambient GitHub Copilot auth for real chat responses";
+
+  const liveStatusMessage = !isLive
+    ? ""
+    : browserTokenAuth
+      ? liveReady
+        ? live.login
+          ? `Live · token connected as ${live.login}`
+          : "Live · token connected (GitHub Models)"
+        : liveTokenRejected
+          ? "Live · token rejected — check the models:read scope."
+          : liveTokenValidating
+            ? "Live · validating token…"
+            : "Live · connect a GitHub token to chat."
+      : liveUnavailable
+        ? live.available
+          ? "Live unavailable — the Copilot runtime failed to start. Try reloading."
+          : "Live unavailable — start the Copilot CLI, then reload."
+        : liveSignedOut
+          ? "Live · sign in to GitHub Copilot to chat."
+          : liveWarming
+            ? "Starting Copilot runtime…"
+            : liveReady
+              ? live.login
+                ? `Live · signed in as ${live.login}`
+                : "Live · ready"
+              : "Checking Copilot runtime…";
+  const selectedLiveTurn = isLive && selectedTurnIndex >= 0 ? live.liveResponses.get(selectedTurnIndex) : undefined;
+  const selectedLiveUsage = selectedLiveTurn?.usage;
+  const submitButtonTitle = isLive
+    ? browserTokenAuth && !liveReady
+      ? liveTokenRejected
+        ? "Token rejected — update it to chat"
+        : "Connect a GitHub token to chat"
+      : liveUnavailable
+        ? "Live runtime unavailable"
+        : liveSignedOut
+          ? "Sign in to GitHub Copilot to chat"
+          : liveWarming
+            ? "Starting Copilot runtime…"
+            : live.isStreaming
+              ? "Waiting for the current response…"
+              : draftUserMessage.trim().length === 0
+                ? "Type a message to send"
+                : "Send message to Copilot"
+    : canSubmitUserMessage
+      ? "Submit user message"
+      : "No more sample messages";
 
   return (
     <main className="app-shell" aria-labelledby="app-title">
@@ -606,6 +804,21 @@ export default function App() {
                 Token IDs
               </button>
             </div>
+            <LiveControls
+              isLive={isLive}
+              liveDisabled={liveToggleDisabled}
+              liveTitle={liveToggleTitle}
+              onSelectMode={switchMode}
+              statusTone={liveStatusTone}
+              statusMessage={liveStatusMessage}
+              showTokenForm={showLiveTokenForm}
+              tokenActive={liveTokenActive}
+              tokenValidating={liveTokenValidating}
+              tokenRejected={liveTokenRejected}
+              servedModelNote={liveServedModelNote}
+              onConnectToken={connectLiveToken}
+              onForgetToken={forgetLiveToken}
+            />
           </div>
 
           <div className="text-surface">
@@ -626,8 +839,9 @@ export default function App() {
                       {COPILOT_MODELS
                         .filter((model) => model.familyId === group.id)
                         .map((model) => (
-                          <option key={model.id} value={model.id}>
+                          <option key={model.id} value={model.id} disabled={liveModelDisabled(model.id)}>
                             {modelOptionLabel(model.id)}
+                            {liveModelDisabled(model.id) ? " (unavailable in Live)" : ""}
                           </option>
                         ))}
                     </optgroup>
@@ -689,12 +903,42 @@ export default function App() {
             </div>
             {viewMode === "chat" ? (
               <div ref={chatTranscriptRef} className="text-viewport chat-transcript" aria-label="Chat transcript" role="log" tabIndex={0}>
-                {chatTranscript.map((message) => (
-                  <article className={`chat-message chat-message-${message.role}`} key={message.id}>
-                    <span className="chat-message-label">{message.label}</span>
-                    <p>{message.content}</p>
-                  </article>
-                ))}
+                {conversationTurns.length === 0 ? (
+                  <p className="chat-empty">
+                    {isLive
+                      ? "Send a message to chat with GitHub Copilot using your ambient sign-in."
+                      : "Submit a sample message to walk through a simulated Copilot conversation."}
+                  </p>
+                ) : null}
+                {conversationTurns.map((message, index) => {
+                  const liveEntry = isLive ? live.liveResponses.get(index) : undefined;
+                  const isStreamingTurn = isLive && live.streamingTurn === index;
+                  const isError = liveEntry?.status === "error";
+                  return (
+                    <Fragment key={index}>
+                      <article className="chat-message chat-message-user">
+                        <span className="chat-message-label">User message {index + 1}</span>
+                        <p>{message}</p>
+                      </article>
+                      {isStreamingTurn ? (
+                        <LiveMessageStream turnIndex={index} live={live} label={`Assistant response ${index + 1}`} />
+                      ) : (
+                        <article
+                          className={`chat-message chat-message-assistant${isError ? " chat-message-error" : ""}`}
+                        >
+                          <span className="chat-message-label">
+                            Assistant response {index + 1}
+                            {isError ? " · error" : ""}
+                          </span>
+                          <p>{assistantResponseForTurn(index, liveResponseResolver)}</p>
+                          {isError && liveEntry?.error ? (
+                            <p className="chat-message-error-note">{liveEntry.error}</p>
+                          ) : null}
+                        </article>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </div>
             ) : viewMode === "plain" ? (
               <div className="plaintext-shell">
@@ -759,10 +1003,17 @@ export default function App() {
                 id="chat-message"
                 className="chat-input"
                 value={draftUserMessage}
-                placeholder="Ask Copilot or paste the user request to estimate its prompt impact..."
+                placeholder={
+                  isLive
+                    ? browserTokenAuth
+                      ? "Ask GitHub Copilot anything — responses use your connected token..."
+                      : "Ask GitHub Copilot anything — responses use your ambient sign-in..."
+                    : "Ask Copilot or paste the user request to estimate its prompt impact..."
+                }
                 aria-label="Chat message input"
-                aria-readonly="true"
-                readOnly
+                aria-readonly={isLive ? undefined : "true"}
+                readOnly={!isLive}
+                onChange={isLive ? (event) => setDraftUserMessage(event.target.value) : undefined}
                 rows={2}
                 spellCheck="true"
               />
@@ -770,7 +1021,7 @@ export default function App() {
                 className="chat-submit"
                 type="submit"
                 aria-label="Submit user message"
-                title={canSubmitUserMessage ? "Submit user message" : "No more sample messages"}
+                title={submitButtonTitle}
                 disabled={!canSubmitUserMessage}
               >
                 <SubmitIcon />
@@ -793,9 +1044,15 @@ export default function App() {
           </div>
 
           <div className="editor-actions">
-            <button className="reset-button" type="button" onClick={resetPrompt} aria-label="Reset simulation" title="Reset simulation">
+            <button
+              className="reset-button"
+              type="button"
+              onClick={resetPrompt}
+              aria-label={isLive ? "Reset conversation" : "Reset simulation"}
+              title={isLive ? "Reset conversation" : "Reset simulation"}
+            >
               <RefreshIcon />
-              <span>Reset simulation</span>
+              <span>{isLive ? "Reset conversation" : "Reset simulation"}</span>
             </button>
           </div>
 
@@ -803,6 +1060,30 @@ export default function App() {
             <p className="cost-note">
               Estimated selected turn: {formatAiCredits(selectedInputAiCredits)} input credits ({formatCurrency(selectedInputCost)}) and {formatAiCredits(selectedOutputAiCredits)} output credits ({formatCurrency(selectedOutputCost)}).
             </p>
+            {selectedLiveUsage ? (
+              <dl className="sdk-usage" aria-label="SDK-reported token usage from GitHub Copilot">
+                <div>
+                  <dt>SDK input</dt>
+                  <dd>{formatNumber(selectedLiveUsage.inputTokens ?? 0)}</dd>
+                </div>
+                <div>
+                  <dt>SDK output</dt>
+                  <dd>{formatNumber(selectedLiveUsage.outputTokens ?? 0)}</dd>
+                </div>
+                <div>
+                  <dt>cache read</dt>
+                  <dd>{formatNumber(selectedLiveUsage.cacheReadTokens ?? 0)}</dd>
+                </div>
+                <div>
+                  <dt>reasoning</dt>
+                  <dd>{formatNumber(selectedLiveUsage.reasoningTokens ?? 0)}</dd>
+                </div>
+                <div>
+                  <dt>cost</dt>
+                  <dd>{formatCurrency(selectedLiveUsage.cost ?? 0)}</dd>
+                </div>
+              </dl>
+            ) : null}
           </div>
 
         </div>

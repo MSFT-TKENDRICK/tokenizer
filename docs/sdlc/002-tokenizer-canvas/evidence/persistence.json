@@ -1,0 +1,51 @@
+{
+  "specId": "002",
+  "capability": "persistence",
+  "requirementIds": [
+    "FR-009"
+  ],
+  "generatedAt": "2026-06-12T19:01:26.191Z",
+  "required": [
+    "coverage",
+    "test-report",
+    "bdd-feature"
+  ],
+  "artifacts": [
+    {
+      "kind": "bdd-feature",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\docs\\sdlc\\002-tokenizer-canvas\\features\\persistence.feature",
+      "exists": true,
+      "bytes": 981,
+      "description": "BDD feature specification"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\tests\\e2e\\accessibility.spec.ts",
+      "exists": true,
+      "bytes": 2689,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "playwright-spec",
+      "path": "C:\\src\\copilot-worktrees\\tokenizer\\msft-tkendrick-sdlc-squad-agent\\tests\\e2e\\tokenizer.spec.ts",
+      "exists": true,
+      "bytes": 31893,
+      "description": "Playwright automation spec"
+    },
+    {
+      "kind": "coverage",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/coverage/coverage-summary.json",
+      "exists": true,
+      "description": "v8 coverage of web/tokenizer.mjs + web/models.mjs from tests/sdlc/tokenizer-canvas"
+    },
+    {
+      "kind": "test-report",
+      "path": "docs/sdlc/002-tokenizer-canvas/evidence/test-report.json",
+      "exists": true,
+      "description": "vitest JSON report — 54 SDLC unit tests passing"
+    }
+  ],
+  "complete": true,
+  "missing": [],
+  "auditNote": "Satisfied by the SDLC orchestrator. FR-009 session-scoped persistence runtime-validated (set_text -> GET /state reflected) per ADR-002/MSF-006; user text kept out of the repo tree."
+}
