@@ -1,0 +1,31 @@
+{
+  "name": "@tokenizer/sdlc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentic SDLC squad forge: spec-grounded sdk-style squads, ASSERT evals, BDD/TDD loops, and evidence collection built on the GitHub Copilot SDK.",
+  "bin": {
+    "sdlc": "./bin/sdlc.mjs"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "sdlc": "node bin/sdlc.mjs",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "optionalDependencies": {
+    "@github/copilot-sdk": "^1.0.1"
+  }
+}
