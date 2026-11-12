@@ -1,8 +1,12 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
+import { resolveVisualOutputDirectory } from "./visual-output.mjs";
 
 const baseURL = process.env.VISUAL_BASE_URL ?? "http://127.0.0.1:4173";
-const outputDir = process.env.VISUAL_OUTPUT_DIR ?? "visual-results";
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const outputDir = resolveVisualOutputDirectory(projectRoot, process.env.VISUAL_OUTPUT_DIR ?? "visual-results");
 
 const scenarios = [
   {
@@ -32,18 +36,18 @@ const scenarios = [
       await page.getByRole("button", { name: /Instructions/ }).click();
       await page.getByRole("button", { name: /Tools/ }).click();
       await page.getByRole("button", { name: /Custom agent/ }).click();
-      await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4");
+      await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4-nano");
       await page.getByRole("tab", { name: "Tokens" }).click();
     },
   },
   {
-    name: "desktop-token-ids",
+    name: "desktop-token-positions",
     viewport: { width: 1280, height: 860 },
-    viewLabel: "Token ID view",
+    viewLabel: "Illustrative token positions",
     run: async (page) => {
       await page.goto(baseURL);
       await page.getByRole("button", { name: /Workspace/ }).click();
-      await page.getByRole("tab", { name: "Token IDs" }).click();
+      await page.getByRole("tab", { name: "Positions" }).click();
     },
   },
   {
@@ -66,7 +70,6 @@ const scenarios = [
   },
 ];
 
-await rm(outputDir, { recursive: true, force: true });
 await mkdir(outputDir, { recursive: true });
 
 const browser = await chromium.launch();
@@ -86,7 +89,7 @@ for (const scenario of scenarios) {
     await scenario.run(page);
     await page.getByRole("heading", { name: "GitHub Copilot Tokenization" }).waitFor();
     await page.getByLabel(scenario.viewLabel).waitFor();
-    if (scenario.viewLabel === "Token text view" || scenario.viewLabel === "Token ID view") {
+    if (scenario.viewLabel === "Token text view" || scenario.viewLabel === "Illustrative token positions") {
       await page.locator(".token-segment").first().waitFor();
     } else if (scenario.viewLabel === "Plaintext editor") {
       await page.locator(".plaintext-highlight .xml-tag").first().waitFor();
