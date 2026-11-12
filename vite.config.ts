@@ -11,7 +11,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['manifest.webmanifest', 'icons/tokenizer-icon.svg'],
       manifest: false,
       workbox: {
