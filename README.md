@@ -16,7 +16,7 @@ The catalog and its source links are maintained in `src/lib/copilotModels.ts`. T
 
 ## Development
 
-Requires Node.js 22 or newer.
+Requires Node.js 22.12 or a newer supported LTS release.
 
 ```sh
 npm ci
@@ -34,3 +34,11 @@ npm run test:a11y
 ```
 
 The Playwright checks use the local app server configured in `playwright.config.ts`. Install the browser binaries once with `npx playwright install chromium` if they are missing.
+
+Pull requests run the build and browser checks without deploying. Pushes to `main` also publish the Pages artifact.
+
+## Dependency maintenance
+
+Dependencies are pinned. The lockfile omits registry download URLs so clean installs work with either the public npm registry or a developer's registry mirror. Regenerate it with a current npm release that resolves peer dependencies; do not bypass peer checks with `--legacy-peer-deps`.
+
+The last successful audit on 2026-11-12 reported eight development-only advisories through Workbox (`deepmerge`, `glob`, and `minimatch`) and the design linter (`zod`). Its proposed Workbox remediation was a breaking PWA plugin downgrade, and it reported no fix for the linter's Zod range. These remain unresolved upstream dependencies, not a clean audit. Recheck `npm audit` and `npm audit --omit=dev` when updating packages; registry errors must not be interpreted as passing audits.
