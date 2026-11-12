@@ -18,20 +18,20 @@
     "design:visual-diff": "node scripts/visual-diff-target.mjs"
   },
   "dependencies": {
-    "react": "latest",
-    "react-dom": "latest"
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.11.3",
-    "@google/design.md": "^0.2.0",
-    "@playwright/test": "^1.60.0",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@vitejs/plugin-react": "latest",
-    "typescript": "latest",
-    "vite": "latest",
-    "vite-plugin-pwa": "latest",
-    "vitest": "latest"
+    "@axe-core/playwright": "4.11.3",
+    "@google/design.md": "0.2.0",
+    "@playwright/test": "1.60.0",
+    "@types/node": "25.9.1",
+    "@types/react": "19.2.16",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "typescript": "6.0.3",
+    "vite": "8.3.6",
+    "vite-plugin-pwa": "2.0.0",
+    "vitest": "4.1.12"
   }
 }
