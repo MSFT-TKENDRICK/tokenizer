@@ -20,7 +20,7 @@ describe("tokenize", () => {
     });
   });
 
-  it("splits text into deterministic token-like units with offsets", () => {
+  it("splits text into approximate token-like units with offsets", () => {
     const tokens = tokenize("Hello, world!");
 
     expect(tokens.map((token) => [token.text, token.category])).toEqual([
@@ -37,9 +37,7 @@ describe("tokenize", () => {
       [3, 7, 12],
       [4, 12, 13],
     ]);
-    expect(tokenize("Hello, world!").map((token) => token.id)).toEqual(
-      tokens.map((token) => token.id),
-    );
+    expect(tokens.map((token) => token.index)).toEqual([0, 1, 2, 3, 4]);
   });
 
   it("preserves whitespace and newline tokens", () => {

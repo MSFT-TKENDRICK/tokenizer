@@ -12,7 +12,6 @@ export type TokenCategory =
 export interface Token {
   text: string;
   index: number;
-  id: number;
   category: TokenCategory;
   start: number;
   end: number;
@@ -95,7 +94,6 @@ export function tokenize(text: string): Token[] {
     tokens.push({
       text: tokenText,
       index: tokens.length,
-      id: tokenId(tokenText, match.category),
       category: match.category,
       start: position,
       end,
@@ -195,16 +193,4 @@ function countLines(text: string): number {
   }
 
   return text.split(/\r\n|\r|\n/).length;
-}
-
-function tokenId(text: string, category: TokenCategory): number {
-  let hash = 0x811c9dc5;
-  const value = `${category}:${text}`;
-
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-
-  return hash >>> 0;
 }
