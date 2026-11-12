@@ -1,7 +1,7 @@
 {
-  "name": "Tokenizer",
-  "short_name": "Tokenizer",
-  "description": "An original tokenizer-style progressive web app for exploring text tokenization.",
+  "name": "Copilot Token Estimator — Local Demo",
+  "short_name": "Token Estimator",
+  "description": "A local demo for approximate coding-assistant token usage and pricing. No live Copilot connection.",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

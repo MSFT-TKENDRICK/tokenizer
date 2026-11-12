@@ -1,30 +1,41 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import {
   summarizeTokens,
   tokenize,
   type Token,
 } from "./lib/tokenizer";
 import {
+  AI_CREDIT_USD_VALUE,
+  AUTO_ELIGIBLE_MODEL_IDS,
   COPILOT_MODELS,
   COPILOT_MODEL_OPTIONS,
+  COPILOT_MODEL_FAMILIES,
+  DEFAULT_AUTO_ROUTED_MODEL_ID,
+  AUTO_MODEL_DISCOUNT,
+  AUTO_MODEL_SOURCE_URL,
+  PRICING_SOURCE_URL,
+  PRICING_VERIFIED_ON,
+  SUPPORTED_MODELS_SOURCE_URL,
+  createAutoModel,
   estimateInputAiCredits,
   estimateInputUsd,
   estimateOutputAiCredits,
   estimateOutputUsd,
-  inputAiCreditsPerMillionTokens,
   modelById,
+  pricingForPromptTokens,
+  type CopilotModel,
   type CopilotModelFamilyId,
 } from "./lib/copilotModels";
+import { estimateTurnInvoice } from "./lib/invoice";
 import {
   assistantResponseForTurn,
-  assistantResponseTraceForTurn,
   composeConversationRequest,
   composePrompt,
-  conversationUserRequests,
   createPatchDiff,
   defaultUserRequest,
   getPromptSections,
   promptPatchLayers,
+  type PromptSection,
 } from "./lib/examples";
 import "./App.css";
 
@@ -36,6 +47,7 @@ interface InvoiceRow {
   label: string;
   inputTokens: number;
   cachedTokens: number;
+  cacheWriteTokens: number;
   outputTokens: number;
   aiCredits: number;
   active: boolean;
@@ -44,84 +56,140 @@ interface InvoiceRow {
 interface InvoiceTotal {
   inputTokens: number;
   cachedTokens: number;
+  cacheWriteTokens: number;
   outputTokens: number;
   aiCredits: number;
+  contextTokens: number;
+  contextPercentage: number;
+  promptTokens: number;
+  totalUsd: number;
 }
 
-const MODEL_GROUPS: readonly { id: CopilotModelFamilyId; label: string }[] = [
-  { id: "anthropic", label: "Copilot · Claude" },
-  { id: "openai", label: "Copilot · OpenAI" },
-  { id: "google", label: "Copilot · Gemini" },
-  { id: "github-microsoft", label: "Copilot · GitHub + Microsoft" },
-];
+interface InvoicePage {
+  rows: InvoiceRow[];
+  total: InvoiceTotal;
+  requestText: string;
+  model: CopilotModel;
+  layerIds: string[];
+}
+
+const MODEL_GROUPS: readonly { id: CopilotModelFamilyId; label: string }[] = COPILOT_MODEL_FAMILIES;
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
 function formatCurrency(value: number) {
+  const absoluteValue = Math.abs(value);
+  const maximumFractionDigits = absoluteValue > 0 && absoluteValue < 1
+    ? Math.min(10, Math.max(2, Math.ceil(-Math.log10(absoluteValue)) + 1))
+    : 2;
   return new Intl.NumberFormat(undefined, {
-    maximumFractionDigits: value < 0.01 ? 4 : 2,
-    minimumFractionDigits: value > 0 && value < 0.01 ? 4 : 0,
+    maximumFractionDigits,
+    minimumFractionDigits: absoluteValue > 0 && absoluteValue < 1 ? 2 : 0,
     style: "currency",
     currency: "USD",
   }).format(value);
 }
 
 function formatAiCredits(value: number) {
-  const maximumFractionDigits = value >= 10 ? 1 : value >= 1 ? 2 : 4;
+  const smallPositiveValue = value > 0 && value < 0.0001;
+  const smallValueFractionDigits = smallPositiveValue
+    ? Math.min(10, Math.max(6, Math.ceil(-Math.log10(value)) + 1))
+    : 0;
+  const maximumFractionDigits = Math.max(
+    smallValueFractionDigits,
+    value >= 10 ? 1 : value >= 1 ? 2 : 4,
+  );
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits,
-    minimumFractionDigits: value > 0 && value < 0.0001 ? 6 : 0,
+    minimumFractionDigits: smallValueFractionDigits,
   }).format(value);
 }
 
-function estimateCachedInputAiCredits(tokenCount: number, model: { pricing: { cachedInputPerMillionTokensUsd: number } }) {
-  return ((tokenCount / 1_000_000) * model.pricing.cachedInputPerMillionTokensUsd) / 0.01;
+function invoicePageFromEstimate(
+  model: CopilotModel,
+  sections: readonly PromptSection[],
+  previousRequestText: string,
+  assistantResponse: string,
+  layerIds: readonly string[],
+): InvoicePage {
+  const estimate = estimateTurnInvoice(model, sections, previousRequestText, assistantResponse);
+  return {
+    rows: estimate.rows.map((row) => ({ ...row, active: true })),
+    total: {
+      inputTokens: estimate.total.inputTokens,
+      cachedTokens: estimate.total.cachedTokens,
+      cacheWriteTokens: estimate.total.cacheWriteTokens,
+      outputTokens: estimate.total.outputTokens,
+      aiCredits: estimate.total.totalAiCredits,
+      contextTokens: estimate.total.contextTokens,
+      contextPercentage: estimate.total.contextPercentage,
+      promptTokens: estimate.total.promptTokens,
+      totalUsd: estimate.total.totalUsd,
+    },
+    requestText: estimate.requestText,
+    model,
+    layerIds: [...layerIds],
+  };
 }
 
-function estimateMixedInputAiCredits(inputTokens: number, cachedTokens: number, model: { pricing: { inputPerMillionTokensUsd: number; cachedInputPerMillionTokensUsd: number } }) {
-  const inputCredits = ((inputTokens / 1_000_000) * model.pricing.inputPerMillionTokensUsd) / 0.01;
-  return inputCredits + estimateCachedInputAiCredits(cachedTokens, model);
+function sameLayerIds(left: readonly string[], right: readonly string[]) {
+  return left.length === right.length && left.every((id) => right.includes(id));
 }
 
 function emptyInvoiceTotal(): InvoiceTotal {
-  return { inputTokens: 0, cachedTokens: 0, outputTokens: 0, aiCredits: 0 };
+  return {
+    inputTokens: 0,
+    cachedTokens: 0,
+    cacheWriteTokens: 0,
+    outputTokens: 0,
+    aiCredits: 0,
+    contextTokens: 0,
+    contextPercentage: 0,
+    promptTokens: 0,
+    totalUsd: 0,
+  };
 }
 
 function creditFormulaTitle(model: {
   pricing: {
     inputPerMillionTokensUsd: number;
     cachedInputPerMillionTokensUsd: number;
+    cacheWritePerMillionTokensUsd?: number;
     outputPerMillionTokensUsd: number;
   };
 }) {
   return [
-    "AI credits = input credits + cached input credits + output credits.",
-    `input credits = uncached input tokens / 1,000,000 x ${formatCurrency(model.pricing.inputPerMillionTokensUsd)} / ${formatCurrency(0.01)}`,
-    `cached input credits = cached input tokens / 1,000,000 x ${formatCurrency(model.pricing.cachedInputPerMillionTokensUsd)} / ${formatCurrency(0.01)}`,
-    `output credits = output tokens / 1,000,000 x ${formatCurrency(model.pricing.outputPerMillionTokensUsd)} / ${formatCurrency(0.01)}`,
+    "AI credits = input credits + cached input credits + cache-write credits + output credits.",
+    `input credits = uncached input tokens / 1,000,000 x ${formatCurrency(model.pricing.inputPerMillionTokensUsd)} / ${formatCurrency(AI_CREDIT_USD_VALUE)}`,
+    `cached input credits = cached input tokens / 1,000,000 x ${formatCurrency(model.pricing.cachedInputPerMillionTokensUsd)} / ${formatCurrency(AI_CREDIT_USD_VALUE)}`,
+    `cache-write credits = cache-write tokens / 1,000,000 x ${formatCurrency(model.pricing.cacheWritePerMillionTokensUsd ?? model.pricing.inputPerMillionTokensUsd)} / ${formatCurrency(AI_CREDIT_USD_VALUE)}`,
+    `output credits = output tokens / 1,000,000 x ${formatCurrency(model.pricing.outputPerMillionTokensUsd)} / ${formatCurrency(AI_CREDIT_USD_VALUE)}`,
   ].join("\n");
 }
 
-function creditCalculationTitle(total: InvoiceTotal, model: {
+function creditCalculationTitle(total: Pick<InvoiceTotal, "inputTokens" | "cachedTokens" | "cacheWriteTokens" | "outputTokens" | "aiCredits">, model: {
   pricing: {
     inputPerMillionTokensUsd: number;
     cachedInputPerMillionTokensUsd: number;
+    cacheWritePerMillionTokensUsd?: number;
     outputPerMillionTokensUsd: number;
   };
 }) {
-  if (total.inputTokens + total.cachedTokens + total.outputTokens === 0) {
+  if (total.inputTokens + total.cachedTokens + total.cacheWriteTokens + total.outputTokens === 0) {
     return undefined;
   }
 
-  const inputCredits = ((total.inputTokens / 1_000_000) * model.pricing.inputPerMillionTokensUsd) / 0.01;
-  const cachedCredits = ((total.cachedTokens / 1_000_000) * model.pricing.cachedInputPerMillionTokensUsd) / 0.01;
-  const outputCredits = ((total.outputTokens / 1_000_000) * model.pricing.outputPerMillionTokensUsd) / 0.01;
+  const inputCredits = ((total.inputTokens / 1_000_000) * model.pricing.inputPerMillionTokensUsd) / AI_CREDIT_USD_VALUE;
+  const cachedCredits = ((total.cachedTokens / 1_000_000) * model.pricing.cachedInputPerMillionTokensUsd) / AI_CREDIT_USD_VALUE;
+  const cacheWriteCredits = ((total.cacheWriteTokens / 1_000_000) * (model.pricing.cacheWritePerMillionTokensUsd ?? model.pricing.inputPerMillionTokensUsd)) / AI_CREDIT_USD_VALUE;
+  const outputCredits = ((total.outputTokens / 1_000_000) * model.pricing.outputPerMillionTokensUsd) / AI_CREDIT_USD_VALUE;
   return [
     `${formatAiCredits(total.aiCredits)} AI credits total`,
     `Uncached input: ${formatNumber(total.inputTokens)} tokens x ${formatCurrency(model.pricing.inputPerMillionTokensUsd)}/1M = ${formatAiCredits(inputCredits)} credits`,
     `Cached input: ${formatNumber(total.cachedTokens)} tokens x ${formatCurrency(model.pricing.cachedInputPerMillionTokensUsd)}/1M = ${formatAiCredits(cachedCredits)} credits`,
+    `Cache write: ${formatNumber(total.cacheWriteTokens)} tokens x ${formatCurrency(model.pricing.cacheWritePerMillionTokensUsd ?? model.pricing.inputPerMillionTokensUsd)}/1M = ${formatAiCredits(cacheWriteCredits)} credits`,
     `Output: ${formatNumber(total.outputTokens)} tokens x ${formatCurrency(model.pricing.outputPerMillionTokensUsd)}/1M = ${formatAiCredits(outputCredits)} credits`,
   ].join("\n");
 }
@@ -130,6 +198,7 @@ function rowCreditCalculationTitle(row: InvoiceRow, model: Parameters<typeof cre
   return creditCalculationTitle({
     inputTokens: row.inputTokens,
     cachedTokens: row.cachedTokens,
+    cacheWriteTokens: row.cacheWriteTokens,
     outputTokens: row.outputTokens,
     aiCredits: row.aiCredits,
   }, model);
@@ -139,16 +208,21 @@ function visibleTokenText(token: Token) {
   return token.text;
 }
 
-function modelOptionLabel(modelId: string) {
-  const model = modelById(modelId);
+function modelOptionLabel(modelId: string, autoModel?: CopilotModel) {
+  const model = modelId === "auto" && autoModel ? autoModel : modelById(modelId);
   if (!model) {
     return modelId;
   }
 
-  const creditRate = formatAiCredits(inputAiCreditsPerMillionTokens(model));
-  const cachedCreditRate = formatAiCredits(model.pricing.cachedInputPerMillionTokensUsd / 0.01);
-  const outputCreditRate = formatAiCredits(model.pricing.outputPerMillionTokensUsd / 0.01);
-  const suffix = model.id === "auto" ? "10% off" : model.provider;
+  const creditRate = formatAiCredits(model.pricing.inputPerMillionTokensUsd / AI_CREDIT_USD_VALUE);
+  const cachedCreditRate = formatAiCredits(model.pricing.cachedInputPerMillionTokensUsd / AI_CREDIT_USD_VALUE);
+  const outputCreditRate = formatAiCredits(model.pricing.outputPerMillionTokensUsd / AI_CREDIT_USD_VALUE);
+  const routeName = model.id === "auto"
+    ? COPILOT_MODELS.find((candidate) => candidate.id === model.routedModelId)?.name ?? model.routedModelId
+    : undefined;
+  const suffix = model.id === "auto"
+    ? `assumes ${routeName} · 10% off`
+    : model.provider;
   return `${model.name} · ${suffix} · ${creditRate}/1M in · ${cachedCreditRate}/1M cached · ${outputCreditRate}/1M out`;
 }
 
@@ -283,15 +357,21 @@ export default function App() {
   const chatTranscriptRef = useRef<HTMLDivElement>(null);
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
   const [draftUserMessage, setDraftUserMessage] = useState(defaultUserRequest);
+  const [rawPromptOverride, setRawPromptOverride] = useState<string | null>(null);
   const [conversationTurns, setConversationTurns] = useState<string[]>([]);
+  const [invoicePages, setInvoicePages] = useState<InvoicePage[]>([]);
   const [invoicePageIndex, setInvoicePageIndex] = useState(0);
   const [invoiceDirection, setInvoiceDirection] = useState<InvoiceDirection>(0);
   const [selectedModelId, setSelectedModelId] = useState("auto");
+  const [autoRoutedModelId, setAutoRoutedModelId] = useState(DEFAULT_AUTO_ROUTED_MODEL_ID);
   const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const [plainScrollTop, setPlainScrollTop] = useState(0);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
 
   const selectedLayerSet = useMemo(() => new Set(selectedLayerIds), [selectedLayerIds]);
-  const selectedModel = modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
+  const selectedModel = selectedModelId === "auto"
+    ? createAutoModel(autoRoutedModelId)
+    : modelById(selectedModelId) ?? COPILOT_MODEL_OPTIONS[0];
   const selectedTurnIndex = conversationTurns.length === 0 ? -1 : Math.min(invoicePageIndex, conversationTurns.length - 1);
   const previewTurns = useMemo(
     () => selectedTurnIndex >= 0
@@ -300,41 +380,75 @@ export default function App() {
     [conversationTurns, draftUserMessage, selectedTurnIndex],
   );
   const activeConversationRequest = useMemo(
-    () => composeConversationRequest(previewTurns, { includeAssistantResponses: selectedTurnIndex >= 0 }),
+    () => composeConversationRequest(previewTurns, {
+      includeAssistantResponses: selectedTurnIndex >= 0,
+      omitLastAssistantResponse: true,
+    }),
     [previewTurns, selectedTurnIndex],
   );
   const promptSections = useMemo(
     () => getPromptSections(selectedLayerIds, activeConversationRequest),
     [selectedLayerIds, activeConversationRequest],
   );
-  const text = useMemo(() => promptSections.map((section) => section.content).join("\n\n"), [promptSections]);
+  const generatedText = useMemo(() => promptSections.map((section) => section.content).join("\n\n"), [promptSections]);
+  const text = rawPromptOverride ?? generatedText;
   const tokens = useMemo(() => tokenize(text), [text]);
   const draftUserMessageTokens = useMemo(() => tokenize(draftUserMessage), [draftUserMessage]);
   const summary = useMemo(() => summarizeTokens(text, tokens, selectedModel), [text, tokens, selectedModel]);
-  const displayedTokens = tokens;
+  const selectedPricingTier = pricingForPromptTokens(selectedModel, tokens.length);
+  const displayedTokens = tokens.slice(0, 2_000);
   const estimatedUserMessageCost = estimateInputUsd(draftUserMessageTokens.length, selectedModel);
   const estimatedUserMessageAiCredits = estimateInputAiCredits(draftUserMessageTokens.length, selectedModel);
-  const inputAiCreditRate = inputAiCreditsPerMillionTokens(selectedModel);
-  const invoicePages = useMemo(
-    () => conversationTurns.map((_, index) => buildInvoicePage(index)),
-    [conversationTurns, selectedLayerIds, selectedModel],
-  );
-  const selectedInvoicePage = selectedTurnIndex >= 0 ? invoicePages[selectedTurnIndex] : buildInvoicePage(-1);
+  const savedInvoicePage = selectedTurnIndex >= 0 ? invoicePages[selectedTurnIndex] : undefined;
+  const hasLayerEdits = savedInvoicePage !== undefined && !sameLayerIds(savedInvoicePage.layerIds, selectedLayerIds);
+  const isDraftView = selectedTurnIndex < 0 || rawPromptOverride !== null || hasLayerEdits;
+  const selectedInvoicePage = rawPromptOverride !== null
+    ? invoicePageFromEstimate(
+      selectedModel,
+      [{ id: "edited-prompt", label: "Edited prompt", content: rawPromptOverride }],
+      "",
+      "",
+      selectedLayerIds,
+    )
+    : hasLayerEdits
+      ? invoicePageFromEstimate(selectedModel, promptSections, "", "", selectedLayerIds)
+      : savedInvoicePage ?? buildInvoicePage(-1);
+  const invoiceModel = selectedInvoicePage.model;
+  const invoicePricing = pricingForPromptTokens(invoiceModel, selectedInvoicePage.total.promptTokens).pricing;
+  const inputAiCreditRate = selectedPricingTier.pricing.inputPerMillionTokensUsd / AI_CREDIT_USD_VALUE;
   const invoiceRows = selectedInvoicePage.rows;
-  const canonicalTokenCount = selectedInvoicePage.total.inputTokens + selectedInvoicePage.total.outputTokens;
-  const contextPercent = Math.min((canonicalTokenCount / selectedModel.contextWindow) * 100, 100);
-  const remainingContext = Math.max(selectedModel.contextWindow - canonicalTokenCount, 0);
-  const selectedInputAiCredits = Math.max(selectedInvoicePage.total.aiCredits - estimateOutputAiCredits(selectedInvoicePage.total.outputTokens, selectedModel), 0);
-  const selectedInputCost = selectedInputAiCredits * 0.01;
-  const selectedOutputCost = estimateOutputUsd(selectedInvoicePage.total.outputTokens, selectedModel);
-  const selectedOutputAiCredits = estimateOutputAiCredits(selectedInvoicePage.total.outputTokens, selectedModel);
+  const canonicalTokenCount = tokens.length;
+  const contextPercent = selectedInvoicePage.total.contextPercentage;
+  const displayContextWindow = invoiceModel.contextWindow;
+  const remainingContext = Math.max(displayContextWindow - selectedInvoicePage.total.contextTokens, 0);
+  const selectedOutputCost = isDraftView ? 0 : estimateOutputUsd(
+    selectedInvoicePage.total.outputTokens,
+    invoiceModel,
+    selectedInvoicePage.total.promptTokens,
+  );
+  const selectedOutputAiCredits = isDraftView ? 0 : estimateOutputAiCredits(
+    selectedInvoicePage.total.outputTokens,
+    invoiceModel,
+    selectedInvoicePage.total.promptTokens,
+  );
+  const selectedInputAiCredits = isDraftView
+    ? selectedInvoicePage.total.aiCredits
+    : Math.max(selectedInvoicePage.total.aiCredits - selectedOutputAiCredits, 0);
+  const selectedInputCost = isDraftView
+    ? selectedInvoicePage.total.totalUsd
+    : Math.max(selectedInvoicePage.total.totalUsd - selectedOutputCost, 0);
   const conversationTotals = useMemo(
     () => invoicePages.slice(0, selectedTurnIndex + 1).reduce(
       (total, page) => ({
         inputTokens: total.inputTokens + page.total.inputTokens,
         cachedTokens: total.cachedTokens + page.total.cachedTokens,
+        cacheWriteTokens: total.cacheWriteTokens + page.total.cacheWriteTokens,
         outputTokens: total.outputTokens + page.total.outputTokens,
         aiCredits: total.aiCredits + page.total.aiCredits,
+        totalUsd: total.totalUsd + page.total.totalUsd,
+        promptTokens: total.promptTokens + page.total.promptTokens,
+        contextTokens: total.contextTokens + page.total.contextTokens,
+        contextPercentage: 0,
       }),
       emptyInvoiceTotal(),
     ),
@@ -349,117 +463,47 @@ export default function App() {
     {
       id: `assistant-${index}`,
       role: "assistant" as const,
-      label: `Assistant response ${index + 1}`,
+      label: `Example assistant reply ${index + 1}`,
       content: assistantResponseForTurn(index),
     },
   ]);
 
-  function buildInvoicePage(turnIndex: number) {
-    const optionalRows = promptPatchLayers.map((layer) => ({
-      id: layer.id,
-      label: layer.id === "instructions" ? "Custom instructions" : layer.name,
-    }));
-
+  function buildInvoicePage(
+    turnIndex: number,
+    turns: readonly string[] = conversationTurns,
+    model: CopilotModel = selectedModel,
+    layerIds: readonly string[] = selectedLayerIds,
+  ): InvoicePage {
     if (turnIndex < 0) {
-      const rows: InvoiceRow[] = [
-        { id: "system", label: "System prompt" },
-        ...optionalRows,
-        { id: "user", label: "User message" },
-        { id: "assistant", label: "Assistant response" },
-      ].map((row) => ({
-        ...row,
-        inputTokens: 0,
-        cachedTokens: 0,
-        outputTokens: 0,
-        aiCredits: 0,
-        active: false,
-      }));
-
-      return {
-        rows,
-        total: emptyInvoiceTotal(),
-      };
+      return invoicePageFromEstimate(model, getPromptSections(layerIds, activeConversationRequest), "", "", layerIds);
     }
 
-    const pageConversationRequest = composeConversationRequest(turnIndex >= 0 ? conversationTurns.slice(0, turnIndex + 1) : []);
-    const previousConversationRequest = composeConversationRequest(turnIndex > 0 ? conversationTurns.slice(0, turnIndex) : []);
-    const pageRows = buildInvoiceRows(getPromptSections(selectedLayerIds, pageConversationRequest));
-    const previousRows = new Map(buildInvoiceRows(getPromptSections(selectedLayerIds, previousConversationRequest)).map((row) => [row.id, row.inputTokens]));
-
-    const activeRows = new Map(pageRows.map((row) => [row.id, row]));
-    const rows = [
-      activeRows.get("system"),
-      ...optionalRows.map((row) => activeRows.get(row.id) ?? {
-        ...row,
-        inputTokens: 0,
-        cachedTokens: 0,
-        outputTokens: 0,
-        aiCredits: 0,
-        active: false,
-      }),
-      activeRows.get("user") ?? {
-        id: "user",
-        label: "User message",
-        inputTokens: 0,
-        cachedTokens: 0,
-        outputTokens: 0,
-        aiCredits: 0,
-        active: false,
-      },
-    ].filter((row): row is InvoiceRow => row !== undefined).map((row) => {
-      const rawCachedTokens = turnIndex > 0 ? previousRows.get(row.id) ?? 0 : 0;
-      const cachedTokens = Math.min(rawCachedTokens, row.inputTokens);
-      const uncachedInputTokens = Math.max(row.inputTokens - cachedTokens, 0);
-      return {
-        ...row,
-        inputTokens: uncachedInputTokens,
-        cachedTokens,
-        aiCredits: estimateMixedInputAiCredits(uncachedInputTokens, cachedTokens, selectedModel),
-      };
+    const request = composeConversationRequest(turns.slice(0, turnIndex + 1), {
+      includeAssistantResponses: true,
+      omitLastAssistantResponse: true,
     });
-    const assistantOutputTokens = tokenize(assistantResponseTraceForTurn(turnIndex)).length;
-    rows.push({
-      id: "assistant",
-      label: "Assistant response",
-      inputTokens: 0,
-      cachedTokens: 0,
-      outputTokens: assistantOutputTokens,
-      aiCredits: estimateOutputAiCredits(assistantOutputTokens, selectedModel),
-      active: true,
-    });
-
-    return {
-      rows,
-      total: rows.reduce(
-        (total, row) => ({
-          inputTokens: total.inputTokens + row.inputTokens,
-          cachedTokens: total.cachedTokens + row.cachedTokens,
-          outputTokens: total.outputTokens + row.outputTokens,
-          aiCredits: total.aiCredits + row.aiCredits,
-        }),
-        emptyInvoiceTotal(),
-      ),
-    };
-  }
-
-  function buildInvoiceRows(sections: ReturnType<typeof getPromptSections>) {
-    return sections.map((section, index) => {
-      const billedContent = index === 0 ? section.content : `\n\n${section.content}`;
-      const tokenCount = tokenize(billedContent).length;
-      return {
-        id: section.id,
-        label: section.label,
-        inputTokens: tokenCount,
-        cachedTokens: 0,
-        outputTokens: 0,
-        aiCredits: estimateInputAiCredits(tokenCount, selectedModel),
-        active: true,
-      };
-    });
+    const previousPage = turnIndex > 0 ? invoicePages[turnIndex - 1] : undefined;
+    const previousRequestText = previousPage?.model.id === model.id &&
+      previousPage.model.routedModelId === model.routedModelId
+      ? previousPage.requestText
+      : "";
+    return invoicePageFromEstimate(
+      model,
+      getPromptSections(layerIds, request),
+      previousRequestText,
+      assistantResponseForTurn(turnIndex),
+      layerIds,
+    );
   }
 
   useEffect(() => {
     chatInputRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    const showUpdate = () => setUpdateAvailable(true);
+    window.addEventListener("pwa-update-available", showUpdate);
+    return () => window.removeEventListener("pwa-update-available", showUpdate);
   }, []);
 
   useEffect(() => {
@@ -475,23 +519,28 @@ export default function App() {
   }, [conversationTurns.length, viewMode]);
 
   function scrollPlainEditorTo(textValue: string, marker?: string) {
-    const markerIndex = marker ? textValue.indexOf(marker) : -1;
-    const targetText = markerIndex >= 0 ? textValue.slice(0, markerIndex) : "";
-    const targetLine = targetText.split("\n").length - 1;
-    const lineHeight = 29;
-    const nextScrollTop = markerIndex >= 0 ? Math.max(targetLine * lineHeight - 24, 0) : 0;
-
-    setPlainScrollTop(nextScrollTop);
+    setPlainScrollTop(0);
     requestAnimationFrame(() => {
-      if (plainEditorRef.current) {
-        plainEditorRef.current.scrollTop = nextScrollTop;
+      const editor = plainEditorRef.current;
+      if (!editor) {
+        return;
       }
+
+      const markerIndex = marker ? textValue.indexOf(marker) : -1;
+      const targetLine = markerIndex >= 0 ? textValue.slice(0, markerIndex).split("\n").length - 1 : 0;
+      const styles = window.getComputedStyle(editor);
+      const lineHeight = Number.parseFloat(styles.lineHeight);
+      const nextScrollTop = markerIndex >= 0 ? Math.max(targetLine * lineHeight, 0) : 0;
+
+      setPlainScrollTop(nextScrollTop);
+      editor.scrollTop = nextScrollTop;
     });
   }
 
   function applyLayers(nextLayerIds: string[], focusMarker?: string) {
     const nextText = composePrompt(nextLayerIds, activeConversationRequest);
     setSelectedLayerIds(nextLayerIds);
+    setRawPromptOverride(null);
     setViewMode("plain");
     scrollPlainEditorTo(nextText, focusMarker);
   }
@@ -507,12 +556,16 @@ export default function App() {
   }
 
   function resetPrompt() {
-    const nextText = composePrompt([], "");
+    const nextText = composePrompt([], defaultUserRequest);
     setSelectedLayerIds([]);
     setDraftUserMessage(defaultUserRequest);
+    setRawPromptOverride(null);
     setConversationTurns([]);
+    setInvoicePages([]);
     setInvoicePageIndex(0);
     setInvoiceDirection(0);
+    setSelectedModelId("auto");
+    setAutoRoutedModelId(DEFAULT_AUTO_ROUTED_MODEL_ID);
     setViewMode("chat");
     scrollPlainEditorTo(nextText);
   }
@@ -525,10 +578,16 @@ export default function App() {
 
     const nextTurns = [...conversationTurns, draftUserMessage];
     const nextTurnIndex = nextTurns.length - 1;
-    const nextConversationRequest = composeConversationRequest(nextTurns, { includeAssistantResponses: true });
+    const nextConversationRequest = composeConversationRequest(nextTurns, {
+      includeAssistantResponses: true,
+      omitLastAssistantResponse: true,
+    });
     const nextText = composePrompt(selectedLayerIds, nextConversationRequest);
+    const nextInvoicePage = buildInvoicePage(nextTurnIndex, nextTurns, selectedModel, selectedLayerIds);
     setConversationTurns(nextTurns);
-    setDraftUserMessage(conversationUserRequests[nextTurns.length] ?? "");
+    setInvoicePages([...invoicePages, nextInvoicePage]);
+    setDraftUserMessage("");
+    setRawPromptOverride(null);
     setInvoicePageIndex(nextTurnIndex);
     setInvoiceDirection(1);
     setViewMode("chat");
@@ -542,7 +601,29 @@ export default function App() {
     }
 
     setInvoiceDirection(direction);
+    setRawPromptOverride(null);
     setInvoicePageIndex((currentIndex) => Math.min(Math.max(currentIndex + direction, 0), conversationTurns.length - 1));
+  }
+
+  function handleViewTabKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const modes: ViewMode[] = ["chat", "plain", "tokens", "ids"];
+    const currentIndex = modes.indexOf(viewMode);
+    const nextIndex = event.key === "ArrowRight"
+      ? (currentIndex + 1) % modes.length
+      : event.key === "ArrowLeft"
+        ? (currentIndex - 1 + modes.length) % modes.length
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? modes.length - 1
+            : -1;
+
+    if (nextIndex >= 0) {
+      event.preventDefault();
+      const nextMode = modes[nextIndex];
+      setViewMode(nextMode);
+      document.getElementById(`tab-${nextMode}`)?.focus();
+    }
   }
 
   function marginalTokenDelta(layerId: string) {
@@ -550,17 +631,29 @@ export default function App() {
       ? selectedLayerIds.filter((id) => id !== layerId)
       : [...selectedLayerIds, layerId];
 
-    return tokenize(composePrompt(nextLayerIds, activeConversationRequest)).length - tokens.length;
+    return tokenize(composePrompt(nextLayerIds, activeConversationRequest)).length -
+      tokenize(composePrompt(selectedLayerIds, activeConversationRequest)).length;
   }
 
   return (
     <main className="app-shell" aria-labelledby="app-title">
+      {updateAvailable && (
+        <div className="update-banner" role="status">
+          <span>A new version of this tokenizer is available.</span>
+          <button type="button" onClick={() => window.dispatchEvent(new Event("pwa-update-now"))}>
+            Update now
+          </button>
+          <button type="button" aria-label="Dismiss update notice" onClick={() => setUpdateAvailable(false)}>
+            Dismiss
+          </button>
+        </div>
+      )}
       <section className="hero panel">
         <div>
           <p className="eyebrow">GitHub Copilot</p>
           <h1 id="app-title">&gt;_ GitHub Copilot Tokenization</h1>
           <p className="hero-copy">
-            Paste text to inspect an approximate token breakdown, readable usage counts, and how much of a selected context window your prompt may consume.
+            A local-only visualizer: token boundaries are approximate, model context windows are planning estimates, and assistant replies are examples. This app does not connect to GitHub Copilot or send your messages anywhere.
           </p>
         </div>
       </section>
@@ -568,42 +661,54 @@ export default function App() {
       <section className="workspace">
         <div className="editor-card panel">
           <div className="view-bar">
-            <div className="view-toggle" role="tablist" aria-label="Tokenizer view mode">
+            <div className="view-toggle" role="tablist" aria-label="Tokenizer view mode" onKeyDown={handleViewTabKeyDown}>
               <button
+                id="tab-chat"
                 aria-selected={viewMode === "chat"}
+                aria-controls="view-panel"
                 className={viewMode === "chat" ? "active" : ""}
                 role="tab"
+                tabIndex={viewMode === "chat" ? 0 : -1}
                 type="button"
                 onClick={() => setViewMode("chat")}
               >
                 Chat
               </button>
               <button
+                id="tab-plain"
                 aria-selected={viewMode === "plain"}
+                aria-controls="view-panel"
                 className={viewMode === "plain" ? "active" : ""}
                 role="tab"
+                tabIndex={viewMode === "plain" ? 0 : -1}
                 type="button"
                 onClick={() => setViewMode("plain")}
               >
                 Plaintext
               </button>
               <button
+                id="tab-tokens"
                 aria-selected={viewMode === "tokens"}
+                aria-controls="view-panel"
                 className={viewMode === "tokens" ? "active" : ""}
                 role="tab"
+                tabIndex={viewMode === "tokens" ? 0 : -1}
                 type="button"
                 onClick={() => setViewMode("tokens")}
               >
                 Tokens
               </button>
               <button
+                id="tab-ids"
                 aria-selected={viewMode === "ids"}
+                aria-controls="view-panel"
                 className={viewMode === "ids" ? "active" : ""}
                 role="tab"
+                tabIndex={viewMode === "ids" ? 0 : -1}
                 type="button"
                 onClick={() => setViewMode("ids")}
               >
-                Token IDs
+                Positions
               </button>
             </div>
           </div>
@@ -620,7 +725,7 @@ export default function App() {
                   value={selectedModel.id}
                   onChange={(event) => setSelectedModelId(event.target.value)}
                 >
-                  <option value="auto">{modelOptionLabel("auto")}</option>
+                  <option value="auto">{modelOptionLabel("auto", selectedModel)}</option>
                   {MODEL_GROUPS.map((group) => (
                     <optgroup key={group.id} label={group.label}>
                       {COPILOT_MODELS
@@ -634,24 +739,64 @@ export default function App() {
                   ))}
                 </select>
               </div>
+              {selectedModelId === "auto" && (
+                <label className="auto-route" htmlFor="auto-model-route">
+                  Assume Auto routes to
+                  <select
+                    id="auto-model-route"
+                    aria-label="Assumed Auto model route"
+                    value={autoRoutedModelId}
+                    onChange={(event) => setAutoRoutedModelId(event.target.value)}
+                  >
+                    {COPILOT_MODELS
+                      .filter((model) => AUTO_ELIGIBLE_MODEL_IDS.includes(model.id))
+                      .map((model) => (
+                        <option key={model.id} value={model.id}>{model.name}</option>
+                      ))}
+                  </select>
+                </label>
+              )}
               <dl className="model-pricing" aria-label="Model pricing metadata">
                 <div>
                   <dt>input</dt>
-                  <dd>${formatNumber(selectedModel.pricing.inputPerMillionTokensUsd)}/1M</dd>
+                  <dd>{formatCurrency(selectedPricingTier.pricing.inputPerMillionTokensUsd)}/1M</dd>
                 </div>
                 <div>
                   <dt>cached</dt>
-                  <dd>${formatNumber(selectedModel.pricing.cachedInputPerMillionTokensUsd)}/1M</dd>
+                  <dd>{formatCurrency(selectedPricingTier.pricing.cachedInputPerMillionTokensUsd)}/1M</dd>
                 </div>
+                {selectedPricingTier.pricing.cacheWritePerMillionTokensUsd !== undefined && (
+                  <div>
+                    <dt>cache write</dt>
+                    <dd>{formatCurrency(selectedPricingTier.pricing.cacheWritePerMillionTokensUsd)}/1M</dd>
+                  </div>
+                )}
                 <div>
                   <dt>output</dt>
-                  <dd>${formatNumber(selectedModel.pricing.outputPerMillionTokensUsd)}/1M</dd>
+                  <dd>{formatCurrency(selectedPricingTier.pricing.outputPerMillionTokensUsd)}/1M</dd>
                 </div>
                 <div>
                   <dt>credits</dt>
                   <dd>{formatAiCredits(inputAiCreditRate)}/1M</dd>
                 </div>
               </dl>
+              <div className="pricing-disclosure">
+                <span>Pricing checked {PRICING_VERIFIED_ON}</span>
+                {selectedModel.pricingUnverified && <strong>Promotional rate ended; replacement unverified</strong>}
+                {selectedModel.promotionEndsOn && <strong>Promotion through {selectedModel.promotionEndsOn}</strong>}
+                {selectedModel.notes && <span>{selectedModel.notes}</span>}
+                {selectedPricingTier.tier === "long-context" && selectedModel.longContext && (
+                  <span>
+                    Long-context rates apply above {formatNumber(selectedModel.longContext.thresholdInputTokens)} input tokens.
+                  </span>
+                )}
+                {selectedModelId === "auto" && (
+                  <span>
+                    Auto has a {formatNumber(AUTO_MODEL_DISCOUNT * 100)}% discount; routing varies per request.
+                    {" "}<a href={AUTO_MODEL_SOURCE_URL}>Auto model details</a>
+                  </span>
+                )}
+              </div>
               <div className="patch-layer-grid" aria-label="Prompt context layers">
                 {promptPatchLayers.map((layer) => {
                   const isSelected = selectedLayerSet.has(layer.id);
@@ -687,6 +832,7 @@ export default function App() {
                     .join("\n\n")}
               </div>
             </div>
+            <div id="view-panel" role="tabpanel" aria-labelledby={`tab-${viewMode}`} tabIndex={0}>
             {viewMode === "chat" ? (
               <div ref={chatTranscriptRef} className="text-viewport chat-transcript" aria-label="Chat transcript" role="log" tabIndex={0}>
                 {chatTranscript.map((message) => (
@@ -713,34 +859,33 @@ export default function App() {
                   ref={plainEditorRef}
                   className="text-viewport text-input"
                   value={text}
+                  onChange={(event) => setRawPromptOverride(event.target.value)}
                   onScroll={(event) => setPlainScrollTop(event.currentTarget.scrollTop)}
                   placeholder="Paste or type text here..."
                   aria-label="Plaintext editor"
-                  aria-readonly="true"
-                  readOnly
                   spellCheck="true"
                 />
               </div>
             ) : tokens.length === 0 ? (
               <div
                 className="text-viewport readonly-view empty-view"
-                aria-label={viewMode === "tokens" ? "Token text view" : "Token ID view"}
+                aria-label={viewMode === "tokens" ? "Token text view" : "Illustrative token positions"}
               >
-                Add text in Plaintext view to inspect token boundaries.
+                Add text in Plaintext view to inspect approximate token boundaries.
               </div>
             ) : (
               <div
                 className="text-viewport readonly-view token-stream"
-                aria-label={viewMode === "tokens" ? "Token text view" : "Token ID view"}
+                aria-label={viewMode === "tokens" ? "Token text view" : "Illustrative token positions"}
                 tabIndex={0}
               >
                 {displayedTokens.map((token) => (
                   <span
                     className={`token-segment token-${token.index % 6} token-kind-${token.category}`}
                     key={`${token.index}-${token.start}`}
-                    title={`Token ${token.index + 1} · ${token.category} · ${token.bytes} bytes · ID ${token.id}`}
+                    title={`Token ${token.index + 1} · ${token.category} · ${token.bytes} bytes · illustrative position ${token.index + 1}`}
                   >
-                    {viewMode === "tokens" ? visibleTokenText(token) : token.id}
+                    {viewMode === "tokens" ? visibleTokenText(token) : token.index + 1}
                   </span>
                 ))}
                 {tokens.length > displayedTokens.length && (
@@ -749,6 +894,12 @@ export default function App() {
                   </span>
                 )}
               </div>
+            )}
+            </div>
+            {rawPromptOverride !== null && (
+              <p className="edit-note">
+                  The plaintext editor is a local prompt trace. Editing it updates token and invoice estimates, but does not change the chat transcript or make a live Copilot request.
+              </p>
             )}
             <form className="chat-composer" aria-label="Chat message composer" onSubmit={submitUserMessage}>
               <label className="chat-composer-label" htmlFor="chat-message">
@@ -759,10 +910,9 @@ export default function App() {
                 id="chat-message"
                 className="chat-input"
                 value={draftUserMessage}
+                onChange={(event) => setDraftUserMessage(event.target.value)}
                 placeholder="Ask Copilot or paste the user request to estimate its prompt impact..."
                 aria-label="Chat message input"
-                aria-readonly="true"
-                readOnly
                 rows={2}
                 spellCheck="true"
               />
@@ -810,14 +960,14 @@ export default function App() {
         <aside className="stats-card panel" aria-label="Tokenizer statistics">
           <div className="context-box">
             <div className="context-label">
-              <span>{selectedModel.name}</span>
+              <span>{invoiceModel.name}</span>
               <strong>{formatNumber(contextPercent)}%</strong>
             </div>
             <div className="meter" aria-hidden="true">
               <span style={{ width: `${contextPercent}%` }} />
             </div>
             <p>
-              {`${formatNumber(remainingContext)} tokens remaining in a ${formatNumber(selectedModel.contextWindow)} token window.`}
+              {`${formatNumber(remainingContext)} tokens remaining in a ${formatNumber(displayContextWindow)} token window.`}
             </p>
           </div>
 
@@ -868,7 +1018,10 @@ export default function App() {
             </div>
             <div
               className={`invoice-slide invoice-slide-${invoiceDirection > 0 ? "next" : invoiceDirection < 0 ? "previous" : "static"}`}
-              key={`${selectedTurnIndex}-${invoiceDirection}-${invoiceRows.map((row) => `${row.id}:${row.inputTokens}:${row.cachedTokens}:${row.outputTokens}`).join("|")}`}
+              key={`${selectedTurnIndex}-${invoiceDirection}-${invoiceRows.map((row) => `${row.id}:${row.inputTokens}:${row.cachedTokens}:${row.cacheWriteTokens}:${row.outputTokens}`).join("|")}`}
+              role="region"
+              aria-label="Prompt cost breakdown"
+              tabIndex={0}
             >
               <table className="invoice-table">
                 <thead>
@@ -876,8 +1029,9 @@ export default function App() {
                     <th scope="col">Item</th>
                     <th scope="col">Input</th>
                     <th scope="col">Cached</th>
+                    <th scope="col">Cache write</th>
                     <th scope="col">Output</th>
-                    <th scope="col" title={creditFormulaTitle(selectedModel)}>Credits</th>
+                    <th scope="col" title={creditFormulaTitle({ pricing: invoicePricing })}>Credits</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -886,18 +1040,20 @@ export default function App() {
                       <th scope="row">{row.label}</th>
                       <td>{formatNumber(row.inputTokens)}</td>
                       <td>{formatNumber(row.cachedTokens)}</td>
+                      <td>{formatNumber(row.cacheWriteTokens)}</td>
                       <td>{formatNumber(row.outputTokens)}</td>
-                      <td title={rowCreditCalculationTitle(row, selectedModel)}>{formatAiCredits(row.aiCredits)}</td>
+                      <td title={rowCreditCalculationTitle(row, { pricing: invoicePricing })}>{formatAiCredits(row.aiCredits)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr>
-                    <th scope="row">Turn total</th>
+                    <th scope="row">{isDraftView ? "Draft estimate" : "Turn total"}</th>
                     <td>{formatNumber(selectedInvoicePage.total.inputTokens)}</td>
                     <td>{formatNumber(selectedInvoicePage.total.cachedTokens)}</td>
+                    <td>{formatNumber(selectedInvoicePage.total.cacheWriteTokens)}</td>
                     <td>{formatNumber(selectedInvoicePage.total.outputTokens)}</td>
-                    <td title={creditCalculationTitle(selectedInvoicePage.total, selectedModel)}>
+                    <td title={creditCalculationTitle(selectedInvoicePage.total, invoiceModel)}>
                       {formatAiCredits(selectedInvoicePage.total.aiCredits)}
                     </td>
                   </tr>
@@ -905,8 +1061,9 @@ export default function App() {
                     <th scope="row">Conversation total</th>
                     <td>{formatNumber(conversationTotals.inputTokens)}</td>
                     <td>{formatNumber(conversationTotals.cachedTokens)}</td>
+                    <td>{formatNumber(conversationTotals.cacheWriteTokens)}</td>
                     <td>{formatNumber(conversationTotals.outputTokens)}</td>
-                    <td title={creditCalculationTitle(conversationTotals, selectedModel)}>
+                    <td title="Sum of the per-turn AI credits using each turn's saved model and rate snapshot.">
                       {formatAiCredits(conversationTotals.aiCredits)}
                     </td>
                   </tr>
@@ -916,7 +1073,7 @@ export default function App() {
           </div>
 
           <p className="help-text">
-            Counts and AI credits are deterministic in this app and intended for planning. Conversation totals sum per-turn billing impact across repeated prompt input, cached input, and assistant output; production tokenizers and cached-token billing may differ by provider, model version, and interaction.
+            Token splits are a readable approximation, not the tokenizer used by each model. Default context windows are planning estimates. Cache hits assume an identical token prefix in consecutive requests; real cache eligibility, duration, and billing are controlled by GitHub and providers. Prices were checked {PRICING_VERIFIED_ON}; conversation totals retain each turn's selected model and rate snapshot. No message is sent to Copilot.
           </p>
         </aside>
       </section>
@@ -926,49 +1083,31 @@ export default function App() {
         <ol>
           <li>
             <cite>
-              “Models and Pricing for GitHub Copilot.” <span>GitHub Docs</span>,
+              “Models and pricing for GitHub Copilot.” <span>GitHub Docs</span>,
               GitHub,{" "}
-              <a href="https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing">
+              <a href={PRICING_SOURCE_URL}>
                 docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing
               </a>.
             </cite>
-            <p>Primary pricing reference for Copilot model input, cached input, and output token rates.</p>
+            <p>Published model rates and the AI credit conversion used by the estimate. Checked {PRICING_VERIFIED_ON}.</p>
           </li>
           <li>
             <cite>
-              “GitHub Copilot Usage-Based Billing Preview.” <span>Azure Static Web Apps</span>,{" "}
-              <a href="https://white-cliff-095e8700f.7.azurestaticapps.net/index.html">
-                white-cliff-095e8700f.7.azurestaticapps.net/index.html
+              “Supported AI models in GitHub Copilot.” <span>GitHub Docs</span>,{" "}
+              <a href={SUPPORTED_MODELS_SOURCE_URL}>
+                docs.github.com/en/copilot/reference/ai-models/supported-models
               </a>.
             </cite>
-            <p>Preview calculator used to compare app estimates against a usage-based billing interface.</p>
+            <p>Model availability, status, and extended context support.</p>
           </li>
           <li>
             <cite>
-              “User-Level Budgets Preview.” <span>GitHub App Preview</span>,{" "}
-              <a href="https://user-level-budgets-p--holly-kassel.github.app/">
-                user-level-budgets-p--holly-kassel.github.app
+              “Auto model selection.” <span>GitHub Docs</span>,{" "}
+              <a href={AUTO_MODEL_SOURCE_URL}>
+                docs.github.com/en/copilot/concepts/models/auto-model-selection
               </a>.
             </cite>
-            <p>Reference for budget-focused Copilot usage controls and user-level spend framing.</p>
-          </li>
-          <li>
-            <cite>
-              “Copilot Billing Training Reference.” <span>Articulate</span>,{" "}
-              <a href="https://share.articulate.com/pmpueguUReJvPTq-7f_aY">
-                share.articulate.com/pmpueguUReJvPTq-7f_aY
-              </a>.
-            </cite>
-            <p>Training material used for terminology, billing concepts, and explanatory copy alignment.</p>
-          </li>
-          <li>
-            <cite>
-              “Copilot Billing Preview.” <span>GitHub Pages</span>,{" "}
-              <a href="https://copilot-billing-preview.github.com/">
-                copilot-billing-preview.github.com
-              </a>.
-            </cite>
-            <p>Preview experience used as a comparison point for Copilot billing presentation and usage summaries.</p>
+            <p>Auto's eligible models, discount, and variable routing behavior.</p>
           </li>
         </ol>
       </footer>
