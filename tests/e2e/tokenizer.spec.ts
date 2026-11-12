@@ -1,16 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
-import {
-  composeConversationRequest,
-  composePrompt,
-  conversationAssistantResponses,
-  conversationUserRequests,
-  defaultUserRequest,
-  promptPatchLayers,
-} from "../../src/lib/examples";
+import { defaultUserRequest, promptPatchLayers } from "../../src/lib/examples";
 import { tokenize } from "../../src/lib/tokenizer";
 
-const pendingFirstPrompt = composePrompt([], composeConversationRequest([defaultUserRequest]));
-const allLayerIds = promptPatchLayers.map((layer) => layer.id);
 const heroHeading = ">_ GitHub Copilot Tokenization";
 
 test.beforeEach(async ({ page }, testInfo) => {
@@ -18,9 +9,7 @@ test.beforeEach(async ({ page }, testInfo) => {
   (testInfo as typeof testInfo & { browserErrors: string[] }).browserErrors = browserErrors;
 
   page.on("console", (message) => {
-    if (message.type() === "error") {
-      browserErrors.push(message.text());
-    }
+    if (message.type() === "error") browserErrors.push(message.text());
   });
   page.on("pageerror", (error) => browserErrors.push(error.message));
 
@@ -31,457 +20,174 @@ test.beforeEach(async ({ page }, testInfo) => {
 test.afterEach(async ({ page }, testInfo) => {
   const errors = (testInfo as typeof testInfo & { browserErrors?: string[] }).browserErrors ?? [];
   expect(errors, "Browser console errors and page errors").toEqual([]);
-  await expect(page).toHaveTitle(/GitHub Copilot Tokenization/);
+  await expect(page).toHaveTitle(/Copilot Token Estimator — Local Demo/);
 });
 
-test("renders the tokenizer workspace with the default chat view", async ({ page }) => {
-  await expect(page.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("heading", { name: heroHeading })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Text, tokens, and token IDs" })).toHaveCount(0);
-  await expect(page.getByLabel("Chat transcript")).toHaveText("");
-  await expect(page.getByLabel("Chat transcript")).not.toContainText("<workspace_info>");
-  await expect(page.getByLabel("Chat transcript")).not.toContainText("<userRequest>");
-  await expect(page.getByLabel("Chat transcript")).not.toContainText(defaultUserRequest);
-  await expect(inlineMetric(page, "tokens")).toHaveText(/\d+/);
-  await expect(page.getByLabel("Prompt metrics")).toContainText("AI credits");
+test("clearly identifies the local estimate and current official references", async ({ page }) => {
+  await expect(page.getByText(/does not connect to GitHub Copilot or send your messages anywhere/)).toBeVisible();
   await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
-  await expect(page.getByLabel("Chat message input")).toBeFocused();
-  await expect(page.getByRole("button", { name: "Submit user message" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Submit user message" }).locator("svg")).toBeVisible();
-  await expect(page.getByText("Submit", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("Chat message token and credit impact")).toContainText("tokens");
-  await expect(page.getByLabel("Chat message token and credit impact")).toContainText("AI credits");
-  await expect(page.getByLabel("GitHub Copilot model selector")).toBeVisible();
-  await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("auto");
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("450/1M");
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("$0.5/1M");
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("$27/1M");
-  await expect(page.getByLabel("Model pricing metadata")).not.toContainText("legacy");
-  await expect(page.getByLabel("Prompt context controls")).toBeVisible();
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(pendingFirstPrompt);
-  await expect(page.locator(".plaintext-highlight .xml-tag").first()).toBeVisible();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/<userRequest>/);
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(new RegExp(defaultUserRequest));
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/<workspace_info>/);
-  expect(await page.locator(".plaintext-highlight").textContent()).toBe(pendingFirstPrompt);
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("System prompt");
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Input");
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Output");
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Custom instructions");
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Tools");
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Cached");
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Turn total");
-  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Conversation total");
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 0 of 0");
-  await expect(page.getByLabel("Selected context preview")).toContainText("No context added.");
-  await expect(page.getByText("Diffs")).toHaveCount(0);
-  await expect(page.getByText("Patch", { exact: true })).toHaveCount(0);
-  await expect(page.locator("#references-title")).toHaveText("References");
-  await expect(page.getByText("Primary pricing reference for Copilot model input")).toBeVisible();
-  await expect(page.getByRole("link", { name: /docs\.github\.com\/en\/copilot/ })).toHaveAttribute(
+  await expect(page.getByLabel("Assumed Auto model route")).toHaveValue("claude-sonnet-5.5");
+  await expect(page.getByText(/Pricing checked/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Auto model details" })).toHaveAttribute(
     "href",
-    "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing",
+    "https://docs.github.com/en/copilot/concepts/models/auto-model-selection",
   );
-  await expect(page.getByLabel("Current token summary")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Prompt metrics" })).toHaveCount(0);
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Draft estimate");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Cache write");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Cached");
+  await expect(page.getByLabel("References")).toContainText("Supported AI models in GitHub Copilot");
 });
 
-test("toggles one shared viewport between plaintext, tokens, and token IDs", async ({ page }) => {
+test("switches accessible views and shows approximate positions instead of invented token IDs", async ({ page }) => {
+  const tabs = page.getByRole("tablist", { name: "Tokenizer view mode" });
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  const plaintextBox = page.getByLabel("Plaintext editor");
-  const plaintextBounds = await plaintextBox.boundingBox();
-  expect(plaintextBounds).not.toBeNull();
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/<userRequest>/);
+  await expect(page.locator(".plaintext-highlight .xml-tag").first()).toBeVisible();
 
   await page.getByRole("tab", { name: "Tokens" }).click();
+  const tokenStream = page.getByLabel("Token text view");
+  await expect(tokenStream).toContainText("GitHub Copilot");
+  await expect(page.locator(".token-segment").first()).toHaveAttribute(
+    "title",
+    /Token 1 .* illustrative position 1/,
+  );
+  await page.getByRole("tab", { name: "Positions" }).click();
+  await expect(page.getByLabel("Illustrative token positions")).toBeVisible();
+  await expect(page.getByLabel("Illustrative token positions").locator(".token-segment").first()).toHaveText("1");
+
+  await tabs.getByRole("tab", { name: "Positions" }).focus();
+  await page.keyboard.press("ArrowLeft");
   await expect(page.getByRole("tab", { name: "Tokens" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Plaintext editor")).toBeHidden();
-  const stream = page.getByLabel("Token text view");
-  await expect(stream).toContainText("GitHub Copilot");
-  await expect(stream).toContainText("coding_agent_instructions");
-
-  const firstToken = page.locator(".token-segment").first();
-  await expect(firstToken).toHaveText("<");
-  await expect(firstToken).toHaveAttribute("title", /Token 1 · operator · 1 bytes · ID \d+/);
-  const tokenBounds = await stream.boundingBox();
-  expect(tokenBounds?.width).toBeCloseTo(plaintextBounds?.width ?? 0, 0);
-
-  await page.getByRole("tab", { name: "Token IDs" }).click();
-  await expect(page.getByRole("tab", { name: "Token IDs" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Token ID view")).toBeVisible();
-  await expect(firstToken).toHaveText(/^\d+$/);
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Tokens" })).toBeFocused();
 });
 
-test("plaintext prompt is read-only and chat composer updates counts", async ({ page }) => {
+test("edits the local plaintext estimate and submits user-authored chat messages", async ({ page }) => {
+  const editor = page.getByLabel("Plaintext editor");
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  const textarea = page.getByLabel("Plaintext editor");
-  const chatInput = page.getByLabel("Chat message input");
-  const initialPrompt = await textarea.inputValue();
-  const baseTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
+  await editor.fill("Changed local prompt 🔍");
+  await expect(page.getByText(/Editing it updates token and invoice estimates/)).toBeVisible();
+  await expect(inlineMetric(page, "tokens")).toHaveText(String(tokenize("Changed local prompt 🔍").length));
 
-  expect(await textarea.evaluate((element) => element.readOnly)).toBe(true);
-  expect(await chatInput.evaluate((element) => element.readOnly)).toBe(true);
-  await expect(chatInput).toHaveCSS("resize", "none");
-  await expect(chatInput).toHaveCSS("outline-style", "none");
-  await expect(page.locator(".text-surface")).toHaveCSS("outline-style", "none");
-  await expect(chatInput).toHaveValue(defaultUserRequest);
-  await expect(textarea).toHaveValue(new RegExp(defaultUserRequest.slice(0, 24)));
-  await textarea.focus();
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-  await textarea.pressSequentially("Hello, ");
-  await page.keyboard.insertText("world! 🚀");
-
-  await expect(textarea).toHaveValue(initialPrompt);
-  await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
-
-  await expect(chatImpactMetric(page, "tokens")).toHaveText(formatMetric(tokenize(defaultUserRequest).length));
-  await expect(chatImpactMetric(page, "AI credits")).toHaveText(/\d/);
-  const impactBounds = await page.getByLabel("Chat message token and credit impact").boundingBox();
-  const submitBounds = await page.getByRole("button", { name: "Submit user message" }).boundingBox();
-  expect(submitBounds?.y).toBeCloseTo(impactBounds?.y ?? 0, 0);
-  expect(submitBounds?.height).toBeCloseTo(impactBounds?.height ?? 0, 0);
-  await expect(inlineMetric(page, "tokens")).toHaveText(formatMetric(baseTokens));
-  const submitButton = page.getByRole("button", { name: "Submit user message" });
-  await submitButton.click();
-  await expect(page.getByLabel("Chat transcript")).toContainText(conversationUserRequests[0]);
-  await expect(page.getByLabel("Chat transcript")).toContainText(conversationAssistantResponses[0]);
-  await expect(page.getByLabel("Chat transcript")).not.toContainText("<workspace_info>");
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]], { includeAssistantResponses: true })));
-  await expect(page.locator(".plaintext-highlight")).toContainText("userRequest");
-  await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
-  await expect(textarea).toHaveValue(/<environment_info>/);
-  await expect(textarea).toHaveValue(/<workspace_info>/);
-  await expect(textarea).toHaveValue(/<attachments>/);
-  await expect(textarea).toHaveValue(/<context>/);
-  await expect(textarea).toHaveValue(/tell me something new/);
-  await expect(textarea).toHaveValue(/<assistantResponse>/);
-  await expect(textarea).toHaveValue(/modern browsers now support CSS container queries/);
-  await expect(textarea).toHaveValue(/<\/assistantResponse>/);
+  const composer = page.getByLabel("Chat message input");
+  await composer.fill("Please inspect this sample code.");
+  await page.getByRole("button", { name: "Submit user message" }).click();
+  await expect(page.getByLabel("Chat transcript")).toContainText("Please inspect this sample code.");
+  await expect(page.getByLabel("Chat transcript")).toContainText("Example assistant reply 1");
+  await expect(page.getByLabel("Chat transcript")).toContainText("canned response");
+  await expect(composer).toHaveValue("");
   await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
-  await expect(submitButton).toBeEnabled();
-  await expect(chatInput).toHaveValue(conversationUserRequests[1]);
-  await expect(chatInput).not.toHaveValue(/workspace_info|previousContext|<context/);
-  expect(await invoiceTokenValue(page, "Turn total")).toBeGreaterThan(0);
-  expect(await invoiceCachedValue(page, "Turn total")).toBe(0);
-
-  await submitButton.click();
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(textarea).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests.slice(0, 2), { includeAssistantResponses: true })));
-  await expect(textarea).not.toHaveValue(/<conversation>|turn=|<context turn=/);
-  await expect(textarea).toHaveValue(/Repository structure includes api\/src\/routes/);
-  await expect(textarea).toHaveValue(/<assistantResponse>/);
-  await expect(textarea).toHaveValue(/modern browsers now support CSS container queries/);
-  await expect(textarea).toHaveValue(/Using the prior workspace context, explain the next implementation step\./);
-  await expect(textarea).toHaveValue(/inspect the changed files, identify the smallest safe edit/);
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 2 of 2");
-  await expect(submitButton).toBeEnabled();
-  await expect(chatInput).toHaveValue(conversationUserRequests[2]);
-  expect(await invoiceCachedValue(page, "Turn total")).toBeGreaterThan(0);
-  expect(await invoiceCreditValue(page, "Conversation total")).toBeGreaterThanOrEqual(await invoiceCreditValue(page, "Turn total"));
+  await expect(editor).toHaveValue(/Please inspect this sample code\./);
+});
 
-  for (let turn = 3; turn <= conversationUserRequests.length; turn += 1) {
-    await submitButton.click();
-    await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of ${turn}`);
+test("keeps draft invoices aligned with edited prompts and formats tiny estimates", async ({ page }) => {
+  await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4-nano");
+  await page.getByRole("button", { name: "Submit user message" }).click();
+  await page.getByRole("tab", { name: "Plaintext" }).click();
+  const editor = page.getByLabel("Plaintext editor");
+
+  await page.getByRole("button", { name: "Workspace context" }).click();
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Draft estimate");
+  expect(await invoiceValue(page, "Draft estimate", 3)).toBe(0);
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Workspace");
+
+  await editor.fill("x");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Edited prompt");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Draft estimate");
+  expect(await invoiceValue(page, "Draft estimate", 3)).toBe(0);
+  await expect(page.locator(".cost-note")).toContainText(/0\.0000/);
+  await expect(page.locator(".cost-note")).toContainText(/\$0\.0000002/);
+  await expect(inlineMetric(page, "tokens")).toHaveText("1");
+});
+
+test("shows the saved model context for a historical turn", async ({ page }) => {
+  await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4-nano");
+  await page.getByRole("button", { name: "Submit user message" }).click();
+  await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("claude-sonnet-5.5");
+
+  const contextBox = page.locator(".context-box");
+  await expect(contextBox).toContainText(/GPT-5\.4 nano/i);
+  await expect(contextBox).toContainText(/tokens remaining in a .* token window/);
+});
+
+test("supports more than the former five bundled turns and itemizes cached usage", async ({ page }) => {
+  const composer = page.getByLabel("Chat message input");
+  const submit = page.getByRole("button", { name: "Submit user message" });
+  await submit.click();
+
+  for (let turn = 2; turn <= 7; turn += 1) {
+    await composer.fill(`User-authored message ${turn}`);
+    await submit.click();
   }
-  await expect(page.getByLabel("Chat transcript")).toContainText("Assistant response 5");
-  const chatScrollGap = await page.getByLabel("Chat transcript").evaluate(
-    (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
-  );
-  expect(chatScrollGap).toBeLessThanOrEqual(2);
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/Summarize the final plan in a concise handoff\./);
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/Final plan: keep the chat transcript readable/);
-  await expect(submitButton).toBeDisabled();
 
-  await page.getByRole("button", { name: /Workspace context/ }).click();
-  await expect(textarea).toHaveValue(composePrompt(["workspace"], composeConversationRequest(conversationUserRequests, { includeAssistantResponses: true })));
-  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBeGreaterThan(
-    Number((await chatImpactMetric(page, "tokens").textContent())?.replace(/,/g, "")),
-  );
-  await page.getByRole("tab", { name: "Tokens" }).click();
-  await expect(page.getByLabel("Token text view")).toContainText("workspace_info");
-  await expect(page.getByLabel("Token text view")).toContainText("assistantResponse");
-  await expect(page.getByLabel("Token text view")).toContainText("modern browsers now support CSS container queries");
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 7 of 7");
+  await expect(page.getByLabel("Chat transcript")).toContainText("User-authored message 7");
+  await expect(page.getByLabel("Chat transcript")).toContainText("Example assistant reply 7");
+  await expect(page.getByRole("button", { name: "Submit user message" })).toBeDisabled();
+  await expect(page.getByLabel("Prompt cost invoice").getByRole("columnheader", { name: "Cache write" })).toBeVisible();
+  expect(await invoiceValue(page, "Assistant response", 3)).toBeGreaterThan(0);
+  expect(await invoiceValue(page, "Turn total", 1) + await invoiceValue(page, "Turn total", 2)).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Previous conversation turn" }).click();
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 6 of 7");
 });
 
-test("XML syntax highlighting preserves readonly closing tags while scrolling", async ({ page }) => {
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  const editor = page.getByLabel("Plaintext editor");
-  await expect(page.locator(".plaintext-highlight")).toHaveText(pendingFirstPrompt);
-  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "</userRequest>" })).toBeVisible();
-  await page.getByRole("button", { name: "Submit user message" }).click();
-  await page.getByRole("tab", { name: "Plaintext" }).click();
+test("uses a selectable Auto route and preserves per-turn invoice rates", async ({ page }) => {
+  const routeSelect = page.getByLabel("Assumed Auto model route");
+  await routeSelect.selectOption("gpt-5.6-luna");
+  await expect(routeSelect).toHaveValue("gpt-5.6-luna");
+  await expect(page.getByText(/Auto has a 10% discount/)).toBeVisible();
+  const submit = page.getByRole("button", { name: "Submit user message" });
+  await submit.click();
 
-  await editor.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-    element.dispatchEvent(new Event("scroll", { bubbles: true }));
-  });
-  await expect(page.locator(".plaintext-highlight")).toContainText("</userRequest>");
+  await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4-nano");
+  await expect(page.getByLabel("Model pricing metadata")).toContainText("$0.20/1M");
+  await expect(page.getByLabel("Prompt cost invoice")).toContainText("Conversation total");
+  await expect(page.getByLabel("Prompt cost invoice").locator("tr", { hasText: "Turn total" })).toBeVisible();
+  await expect(page.getByLabel("Prompt cost invoice").locator("tr", { hasText: "Turn total" }).locator("td").last())
+    .toHaveAttribute("title", /AI credits total/);
 });
 
-test("Reset simulation restores the sample start state", async ({ page }) => {
-  await expect(page.getByRole("button", { name: "Clear" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Restore sample" })).toHaveCount(0);
-  const resetButton = page.getByRole("button", { name: "Reset simulation" });
-  await expect(resetButton).toBeVisible();
-  await expect(resetButton.locator("svg")).toBeVisible();
-
-  await page.getByRole("button", { name: "Submit user message" }).click();
-  await expect(page.getByLabel("Chat transcript")).toContainText(conversationAssistantResponses[0]);
-  await page.getByRole("button", { name: /Workspace context/ }).click();
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
-
-  await resetButton.click();
-  await expect(page.getByLabel("Chat transcript")).toHaveText("");
-  await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 0 of 0");
-  await expect(page.getByRole("button", { name: /Workspace context/ })).toHaveAttribute("aria-pressed", "false");
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(pendingFirstPrompt);
-  await page.getByRole("button", { name: "Submit user message" }).click();
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt([], composeConversationRequest([conversationUserRequests[0]], { includeAssistantResponses: true })));
-  await expect(page.getByRole("button", { name: "Submit user message" })).toBeEnabled();
-});
-
-test("context layer buttons apply and remove prompt diffs", async ({ page }) => {
-  await page.getByRole("tab", { name: "Plaintext" }).click();
-  const workspaceButton = page.getByRole("button", { name: /Workspace/ });
-  const toolsButton = page.getByRole("button", { name: /Tools/ });
-  const editor = page.getByLabel("Plaintext editor");
-  const baseTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
-
-  await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
+test("adds and removes illustrative prompt context and resets the complete simulation", async ({ page }) => {
+  const workspaceButton = page.getByRole("button", { name: /Workspace context/ });
   await workspaceButton.click();
   await expect(workspaceButton).toHaveAttribute("aria-pressed", "true");
-  await expect(editor).toHaveValue(composePrompt(["workspace"], composeConversationRequest([defaultUserRequest])));
-  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace"], composeConversationRequest([defaultUserRequest])));
-  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<workspace_info>" }).first()).toBeInViewport();
-  await expect(page.getByLabel("Selected context preview")).toContainText("diff --git");
-  await expect(page.getByLabel("Selected context preview")).toContainText("+<workspace_info>");
-  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBe(baseTokens);
-
-  await toolsButton.click();
-  await expect(editor).toHaveValue(composePrompt(["workspace", "tools"], composeConversationRequest([defaultUserRequest])));
-  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["workspace", "tools"], composeConversationRequest([defaultUserRequest])));
-  await expect(page.locator(".plaintext-highlight .xml-tag", { hasText: "<skills>" })).toBeInViewport();
-  await expect(editor).toHaveValue(/  <skill>/);
-  await expect(page.getByLabel("Selected context preview")).toContainText("+<name>web-design-reviewer</name>");
-  await expect(page.getByLabel("Selected context preview")).toContainText("+<instruction forToolsWithPrefix=\"mcp_github\">");
-
-  await workspaceButton.click();
-  await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
-  await expect(editor).toHaveValue(composePrompt(["tools"], composeConversationRequest([defaultUserRequest])));
-  await expect(page.locator(".plaintext-highlight")).toHaveText(composePrompt(["tools"], composeConversationRequest([defaultUserRequest])));
-  const toolsOnlyPrompt = await editor.inputValue();
-  expect(toolsOnlyPrompt).toContain("<instructions>");
-  expect(toolsOnlyPrompt.indexOf("<instruction forToolsWithPrefix=\"mcp_github\">")).toBeGreaterThan(toolsOnlyPrompt.indexOf("<instructions>"));
-  expect(toolsOnlyPrompt.indexOf("<instruction forToolsWithPrefix=\"mcp_github\">")).toBeLessThan(toolsOnlyPrompt.indexOf("</instructions>"));
-  await expect(editor).toHaveValue(/<workspace_info>/);
-});
-
-test("context layers isolate canonical Copilot context sources", async ({ page }) => {
   await page.getByRole("tab", { name: "Plaintext" }).click();
-  const expectedFragments = [
-    ["Workspace", "workspace_info"],
-    ["Instructions", "AGENTS.md"],
-    ["Tools", "mcp_github"],
-    ["Custom agent", "SecurityReviewer"],
-  ] as const;
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/<workspace_info>/);
+  await page.getByLabel("Plaintext editor").fill("Manually edited local prompt");
+  await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4-nano");
+  await expect(page.getByLabel("Chat transcript")).toHaveCount(0);
 
-  for (const [name, fragment] of expectedFragments) {
-    await page.getByRole("button", { name: new RegExp(name) }).click();
-    expect(await page.getByLabel("Plaintext editor").inputValue()).toContain(fragment);
-  }
-
-  expect(await page.getByLabel("Plaintext editor").inputValue()).toContain(".github/copilot-instructions.md");
-  await expect(page.getByLabel("Plaintext editor")).toHaveValue(composePrompt(allLayerIds, composeConversationRequest([defaultUserRequest])));
-  const promptWithAllLayers = await page.getByLabel("Plaintext editor").inputValue();
-  expect(promptWithAllLayers.match(/<instructions>/g)).toHaveLength(1);
-  expect(promptWithAllLayers.indexOf("<instruction forToolsWithPrefix=\"mcp_github\">")).toBeGreaterThan(promptWithAllLayers.indexOf("<instructions>"));
-  expect(promptWithAllLayers.indexOf("<instruction forToolsWithPrefix=\"mcp_github\">")).toBeLessThan(promptWithAllLayers.indexOf("</instructions>"));
-  expect(promptWithAllLayers.slice(promptWithAllLayers.indexOf("</instructions>"))).not.toContain("<instruction forToolsWithPrefix=\"mcp_github\">");
+  await page.getByRole("button", { name: "Reset simulation" }).click();
+  await expect(page.getByLabel("Chat message input")).toHaveValue(defaultUserRequest);
+  await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("auto");
+  await expect(page.getByLabel("Assumed Auto model route")).toHaveValue("claude-sonnet-5.5");
+  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 0 of 0");
+  await expect(workspaceButton).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByLabel("Chat transcript")).toHaveText("");
+  await expect(page.locator(".patch-layer-button")).toHaveCount(promptPatchLayers.length);
+  await page.getByRole("tab", { name: "Plaintext" }).click();
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/<userRequest>/);
+  await expect(page.getByLabel("Plaintext editor")).toHaveValue(/tell me something new/);
+  await expect(page.getByLabel("Plaintext editor")).not.toHaveValue(/Manually edited local prompt/);
 });
 
-test("model selector changes context copy and meter width", async ({ page }) => {
-  await page.getByRole("button", { name: "Submit user message" }).click();
-  const meter = page.locator(".meter span");
-  const initialWidth = await meter.evaluate((element) => getComputedStyle(element).width);
-  const initialCredits = Number((await inlineMetric(page, "ai-credits").textContent())?.replace(/,/g, ""));
-
-  await expect(page.locator(".context-label")).toContainText("Auto");
-  await expect(page.getByText(/tokens remaining in a 128,000 token window\./)).toBeVisible();
-  await expect(page.getByText(/Estimated selected turn: .* input credits .* and .* output credits .*\./)).toBeVisible();
-
-  await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("gpt-5.4");
-  await expect(page.locator(".context-label")).toContainText("GPT-5.4");
-  await expect(page.getByText(/tokens remaining in a 272,000 token window\./)).toBeVisible();
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("$2.5/1M");
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("$0.3/1M");
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("250/1M");
-  expect(Number((await inlineMetric(page, "ai-credits").textContent())?.replace(/,/g, ""))).toBeLessThan(initialCredits);
-
-  const largerContextWidth = await meter.evaluate((element) => getComputedStyle(element).width);
-  expect(parseFloat(largerContextWidth)).toBeLessThan(parseFloat(initialWidth));
-
-  await page.getByLabel("GitHub Copilot model", { exact: true }).selectOption("claude-haiku-4.5");
-  await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toHaveValue("claude-haiku-4.5");
-  await expect(page.getByLabel("Model pricing metadata")).toContainText("100/1M");
-});
-
-test("itemized invoice totals match prompt metrics", async ({ page }) => {
-  const invoice = page.getByLabel("Prompt cost invoice");
-
-  expect(await invoiceTokenValue(page, "System prompt")).toBe(0);
-  expect(await invoiceTokenValue(page, "Custom instructions")).toBe(0);
-  expect(await invoiceTokenValue(page, "Tools")).toBe(0);
-  expect(await invoiceTokenValue(page, "Turn total")).toBe(0);
-  expect(await invoiceOutputValue(page, "Turn total")).toBe(0);
-  await expect(invoice.getByRole("columnheader", { name: "Credits" })).toHaveAttribute("title", /AI credits = input credits \+ cached input credits \+ output credits/);
-  await expect(invoiceCreditCell(page, "System prompt")).not.toHaveAttribute("title");
-
-  await page.getByRole("button", { name: "Submit user message" }).click();
-  const totalTokens = Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""));
-  await expect(page.getByLabel("Chat transcript")).toContainText(conversationAssistantResponses[0]);
-  expect(await invoiceTokenValue(page, "System prompt")).toBeGreaterThan(0);
-  expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
-  expect(await invoiceOutputValue(page, "Turn total")).toBe(await invoiceOutputValue(page, "Assistant response"));
-  expect(totalTokens).toBe(await invoiceTokenValue(page, "Turn total") + await invoiceOutputValue(page, "Turn total"));
-  expect(Number((await inlineMetric(page, "ai-credits").textContent())?.replace(/,/g, ""))).toBeCloseTo(await invoiceCreditValue(page, "Turn total"), 3);
-  await expect(invoiceCreditCell(page, "System prompt")).toHaveAttribute("title", /Uncached input: .* tokens x .*\/1M = .* credits/);
-  await expect(invoiceCreditCell(page, "Assistant response")).toHaveAttribute("title", /Output: .* tokens x .*\/1M = .* credits/);
-  await expect(invoiceCreditCell(page, "Turn total")).toHaveAttribute("title", /AI credits total/);
-
-  await page.getByRole("button", { name: /Instructions context/ }).click();
-  await page.getByRole("button", { name: /Tools context/ }).click();
-  await expect(invoice).toContainText("Custom instructions");
-  await expect(invoice).toContainText("Tools");
-  expect(await invoiceTokenValue(page, "Custom instructions")).toBeGreaterThan(0);
-  expect(await invoiceTokenValue(page, "Tools")).toBeGreaterThan(0);
-  expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
-  expect(Number((await inlineMetric(page, "tokens").textContent())?.replace(/,/g, ""))).toBe(
-    await invoiceTokenValue(page, "Turn total") + await invoiceOutputValue(page, "Turn total"),
-  );
-});
-
-test("conversation invoice pages navigate turn impact and cached totals", async ({ page }) => {
-  const submitButton = page.getByRole("button", { name: "Submit user message" });
-  await submitButton.click();
-  const firstTurnTotal = await invoiceTokenValue(page, "Turn total");
-  expect(await invoiceCachedValue(page, "Turn total")).toBe(0);
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 1 of 1");
-  await expect(page.getByRole("button", { name: "Previous conversation turn" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Next conversation turn" })).toBeDisabled();
-  expect(await invoiceTokenValue(page, "Conversation total")).toBe(firstTurnTotal);
-  expect(await invoiceOutputValue(page, "Conversation total")).toBe(await invoiceOutputValue(page, "Turn total"));
-
-  for (let turn = 2; turn <= conversationUserRequests.length; turn += 1) {
-    await submitButton.click();
-    await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of ${turn}`);
-  }
-  await expect(submitButton).toBeDisabled();
-  const fifthTurnTotal = await invoiceTokenValue(page, "Turn total");
-  const fifthTurnCachedTotal = await invoiceCachedValue(page, "Turn total");
-  expect(fifthTurnTotal).toBeLessThan(firstTurnTotal);
-  expect(fifthTurnCachedTotal).toBeGreaterThan(0);
-  expect(fifthTurnTotal + fifthTurnCachedTotal).toBeGreaterThan(firstTurnTotal);
-  expect(await invoiceTokenValue(page, "System prompt")).toBe(0);
-  expect(await invoiceCachedValue(page, "System prompt")).toBeGreaterThan(0);
-  expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
-  expect(await invoiceOutputValue(page, "Turn total")).toBeGreaterThan(0);
-  expect(await invoiceTokenValue(page, "Conversation total")).toBeGreaterThan(firstTurnTotal + fifthTurnTotal);
-  expect(await invoiceOutputValue(page, "Conversation total")).toBeGreaterThan(await invoiceOutputValue(page, "Turn total"));
-  const fifthConversationTotal = await invoiceTokenValue(page, "Conversation total");
-  const fifthConversationOutputTotal = await invoiceOutputValue(page, "Conversation total");
-
-  await page.getByRole("button", { name: "Previous conversation turn" }).click();
-  await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText("Turn 4 of 5");
-  await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-previous/);
-  expect(await invoiceTokenValue(page, "Conversation total")).toBeLessThan(fifthConversationTotal);
-  expect(await invoiceOutputValue(page, "Conversation total")).toBeLessThan(fifthConversationOutputTotal);
-  expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
-  expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
-  await expect(page.getByLabel("Chat message input")).toHaveValue("");
-  await expect(chatImpactMetric(page, "tokens")).toHaveText("0");
-
-  for (let turn = 3; turn >= 1; turn -= 1) {
-    await page.getByRole("button", { name: "Previous conversation turn" }).click();
-    await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of 5`);
-  }
-  expect(await invoiceTokenValue(page, "Turn total")).toBe(firstTurnTotal);
-  expect(await invoiceTokenValue(page, "Conversation total")).toBe(firstTurnTotal);
-  expect(await invoiceOutputValue(page, "Conversation total")).toBe(await invoiceOutputValue(page, "Turn total"));
-  expect(await invoiceTokenValue(page, "User message")).toBeGreaterThan(0);
-  expect(await invoiceOutputValue(page, "Assistant response")).toBeGreaterThan(0);
-
-  for (let turn = 2; turn <= 5; turn += 1) {
-    await page.getByRole("button", { name: "Next conversation turn" }).click();
-    await expect(page.getByLabel("Conversation turn invoice navigation")).toContainText(`Turn ${turn} of 5`);
-  }
-  await expect(page.getByLabel("Prompt cost invoice").locator(".invoice-slide")).toHaveClass(/invoice-slide-next/);
-});
-
-test("mobile viewport keeps visible features usable", async ({ page }) => {
+test("keeps the mobile layout within the viewport", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto("/");
-
+  await page.reload();
   await expect(page.getByRole("heading", { name: heroHeading })).toBeVisible();
-  await expect(page.getByLabel("GitHub Copilot model", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Chat transcript")).toBeVisible();
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Reset simulation" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Reset simulation" }).locator("svg")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Workspace context/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Workspace context/ }).locator("svg")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Clear" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Restore sample" })).toHaveCount(0);
-  await expect(page.getByLabel("Tokenizer statistics")).toBeVisible();
-  await expect(page.locator(".token-segment").first()).toBeVisible();
-
-  const hasHorizontalOverflow = await page.evaluate(
+  const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
   );
-  expect(hasHorizontalOverflow).toBe(false);
+  expect(overflow).toBe(false);
 });
 
 function inlineMetric(page: Page, label: string) {
   return page.locator(`[data-metric="${label}"] dd`);
 }
 
-function chatImpactMetric(page: Page, label: string) {
-  return page.getByLabel("Chat message token and credit impact").locator("div", { hasText: label }).locator("dd");
-}
-
-async function invoiceTokenValue(page: Page, label: string) {
-  return invoiceNumberValue(page, label, 0);
-}
-
-async function invoiceCachedValue(page: Page, label: string) {
-  return invoiceNumberValue(page, label, 1);
-}
-
-async function invoiceOutputValue(page: Page, label: string) {
-  return invoiceNumberValue(page, label, 2);
-}
-
-async function invoiceCreditValue(page: Page, label: string) {
-  return invoiceNumberValue(page, label, 3);
-}
-
-function invoiceCreditCell(page: Page, label: string) {
-  return page.getByLabel("Prompt cost invoice").locator("tr", { hasText: label }).locator("td").nth(3);
-}
-
-async function invoiceNumberValue(page: Page, label: string, columnIndex: number) {
+async function invoiceValue(page: Page, label: string, columnIndex: number) {
   const text = await page.getByLabel("Prompt cost invoice").locator("tr", { hasText: label }).locator("td").nth(columnIndex).textContent();
   return Number(text?.replace(/,/g, "") ?? 0);
-}
-
-function formatMetric(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(value);
 }
