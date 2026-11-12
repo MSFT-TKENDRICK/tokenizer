@@ -171,16 +171,25 @@ test("adds and removes illustrative prompt context and resets the complete simul
   await expect(page.getByLabel("Plaintext editor")).not.toHaveValue(/Manually edited local prompt/);
 });
 
-test("keeps the mobile layout within the viewport", async ({ page }) => {
+test("keeps the mobile layout within the viewport with system and fallback fonts", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.reload();
   await expect(page.getByRole("heading", { name: heroHeading })).toBeVisible();
   await page.getByRole("tab", { name: "Tokens" }).click();
   await expect(page.getByLabel("Token text view")).toBeVisible();
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-  );
-  expect(overflow).toBe(false);
+
+  for (const font of ["system", "fallback"]) {
+    if (font === "fallback") {
+      await page.addStyleTag({ content: ':root { --font-mono: "Courier New", monospace; }' });
+    }
+    for (const width of [375, 320]) {
+      await page.setViewportSize({ width, height: 812 });
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      );
+      expect(overflow, `${font} font at ${width}px`).toBe(false);
+    }
+  }
 });
 
 function inlineMetric(page: Page, label: string) {
